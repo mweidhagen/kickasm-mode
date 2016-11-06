@@ -11,11 +11,11 @@ Require this script
 
     (require 'kickasm-mode)
 
-then call command "`M-x kickasm-mode`". Or put the following expression in your 
+then call command `M-x kickasm-mode`. Or put the following expression in your 
 init file to make it automatically load for files with a certain file extension.
 
     (require 'kickasm-mode)
     (add-to-list 'auto-mode-list '("\\.asm" . kickasm-mode))
 
-You should replace .asm with the extension you are using for your assembler 
+You should replace `.asm` with the extension you are using for your assembler 
 files.
