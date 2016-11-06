@@ -11,7 +11,7 @@ Require this script
 
     (require 'kickasm-mode)
 
-then call command "M-x kickasm-mode". Or put the following expression in your 
+then call command "`M-x kickasm-mode`". Or put the following expression in your 
 init file to make it automatically load for files with a certain file extension.
 
     (require 'kickasm-mode)
