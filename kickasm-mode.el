@@ -27,14 +27,14 @@
 ;;; Commentary:
 
 ;; This package provides a major mode for editing Mads Nielsen's
-;; Kick Assembler. The keywords and syntax are up to date as of
+;; Kick Assembler.  The keywords and syntax are up to date as of
 ;; Kick Assembler 4.3
 
 ;; Kick Assembler Home: http://theweb.dk/KickAssembler
 
 ;; The aim of this package is to provide font lock support as well as
 ;; indentation for Kick Assembler code.  The indentation can be
-;; customizable in various ways. It also contains an assemble command
+;; customizable in various ways.  It also contains an assemble command
 ;; to assemble a buffer using Kick Assembler and then to test the
 ;; assembled program in VICE or C64 Debugger.
 
@@ -56,11 +56,11 @@
 ;; change the value of `kickasm-command-start-indent' to something larger
 ;; than the default value.
 ;; It is also possible to turn off all automatic indentation by setting
-;; variable `kickasm-use-automatic-indentation' to nil. In that case
+;; variable `kickasm-use-automatic-indentation' to nil.  In that case
 ;; pressing TAB will insert a tab character instead.
 
 ;; When editing a Kick Assembler file you normally have script code
-;; mixed with assembler code. To make editing easy then the TAB key,
+;; mixed with assembler code.  To make editing easy then the TAB key,
 ;; apart from indenting a line, also cycles through a list of tab stops
 ;; depending on the line type.
 
@@ -69,7 +69,7 @@
 ;; not // (c++-style comment starter).
 
 ;; kickasm mode is not automatically linked to any specific file
-;; extension. To do that you should put the following lines in your
+;; extension.  To do that you should put the following lines in your
 ;; init.el file:
 ;;
 ;; (require 'kickasm-mode)
@@ -83,7 +83,7 @@
 
 ;;; Known Issues
 
-;; The flags for starting C64 Debugger doesn't seem to work. Currently
+;; The flags for starting C64 Debugger doesn't seem to work.  Currently
 ;; it starts but doesn't load the .prg file as intended.
 
 ;;; Code:
@@ -134,8 +134,8 @@
 (defcustom kickasm-mnemonic-indentation-mode 'min
   "Specify how mnemonics should be indented.
 If nil then always indent mnemonics to `kickasm-mnemonic-indent'.
-If 'min then indent to which is greatest of `kickasm-mnemonic-indent' and the depth 
-of the preceding code.
+If 'min then indent to which is greatest of `kickasm-mnemonic-indent'
+and the depth of the preceding code.
 If 'depth then always indent to the depth of the preceding code."
   :type 'symbol
   :group 'kickasm)
@@ -149,7 +149,7 @@ If 'depth then always indent to the depth of the preceding code."
   "Specify how preprocessor lines should be indented.
 If nil then ignore all preprocessor lines when indenting.
 If 'left then always indent to beginning of line
-If 'normal then indent `kickasm-preprocessor-indent' spaces for 
+If 'normal then indent `kickasm-preprocessor-indent' spaces for
 each nesting level."
   :type 'symbol
   :group 'kickasm)
@@ -171,7 +171,7 @@ each nesting level."
   :group 'kickasm)
 
 (defcustom kickasm-assemble-command "java -jar /usr/lib/kickassembler/KickAss.jar -vicesymbols"
-  "Command to assemble Kick Assembler programs"
+  "Command to assemble Kick Assembler programs."
   :type 'string
   :group 'kickasm)
 
@@ -192,17 +192,19 @@ file was created by the assembler."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun kickasm-compilation-buffer-name (mode)
-  "Function to compute the name of the compilation buffer"
+  "Function to compute the name of the compilation buffer.
+MODE is the name of the major mode."
   (concat "*" "kickasm" "*"))
 
 (defun kickasm-compilation-setup-function ()
-  (setq-local compilation-error-regexp-alist kickasm-error-regexp-alist) 
+  "Compilation setup function."
+  (setq-local compilation-error-regexp-alist kickasm-error-regexp-alist)
   (setq-local compilation-scroll-output 'first-error)
   (setq-local compilation-auto-jump-to-first-error t))
 
 
 (defun kickasm-assemble ()
-  "Assemble the file in the buffer"
+  "Assemble the file in the buffer."
   (interactive)
   (compile (concat kickasm-assemble-command " " (buffer-name))))
 
@@ -210,7 +212,7 @@ file was created by the assembler."
 (defconst kickasm--c64debugger-process-buffer-name "*c64debugger*")
 
 (defun kickasm-get-compilation-buffer-data ()
-  "Returns a list of information from the compilation buffer.
+  "Return a list of information from the compilation buffer.
 Currently the list consists of three elements
 Element 0 is the compilation window
 Element 1 is the name of the prg file created by Kick Assembler
@@ -232,7 +234,7 @@ The list might be extended in the future in case more strings are needed."
     (list compwin prgname vicesymname)))
 
 (defun kickasm-run-vice ()
-  "Run VICE with an assembled file"
+  "Run VICE with an assembled file."
   (interactive)
   (let* ((vicebuf (get-buffer-create kickasm--vice-process-buffer-name))
 	 (viceproc (get-buffer-process vicebuf))
@@ -249,7 +251,7 @@ The list might be extended in the future in case more strings are needed."
     (if (nth 0 compdata) (set-window-buffer (nth 0 compdata) vicebuf))
 
     (if (or (nth 1 compdata)
-	    (y-or-n-p "Unable to locate name of .prg file, do you want to run VICE anyway?"))
+	    (y-or-n-p "Unable to locate name of .prg file, do you want to run VICE anyway? "))
 	(apply 'start-process
 	       "VICE"
 	       kickasm--vice-process-buffer-name
@@ -258,7 +260,7 @@ The list might be extended in the future in case more strings are needed."
 		       (if (nth 1 compdata) `(,(nth 1 compdata))))))))
 
 (defun kickasm-run-c64debugger ()
-  "Run C64 Debugger with an assembled file"
+  "Run C64 Debugger with an assembled file."
   (interactive)
   (let* ((c64dbgbuf (get-buffer-create kickasm--c64debugger-process-buffer-name))
 	 (c64dbgproc (get-buffer-process c64dbgbuf))
@@ -275,7 +277,7 @@ The list might be extended in the future in case more strings are needed."
     (if (nth 0 compdata) (set-window-buffer (nth 0 compdata) c64dbgbuf))
 
     (if (or (nth 1 compdata)
-	    (y-or-n-p "Unable to locate name of .prg file, do you want to run C64 Debugger anyway?"))
+	    (y-or-n-p "Unable to locate name of .prg file, do you want to run C64 Debugger anyway? "))
 	(apply 'start-process
 	       "C64DBG"
 	       kickasm--c64debugger-process-buffer-name
@@ -294,7 +296,8 @@ The list might be extended in the future in case more strings are needed."
     (setcdr (last stack) stack)))
 
 (defun kickasm-electric-brace (arg)
-  "Insert a brace and perform indentation."
+  "Insert a brace and perform indentation.
+ARG is the number of braces to insert."
   (interactive "*P")
   (let ((old-blink-paren blink-paren-function)
 	blink-paren-function)
@@ -304,17 +307,17 @@ The list might be extended in the future in case more strings are needed."
     (if old-blink-paren
 	(funcall old-blink-paren))))
 
-(defun kickasm-insert-tab (arg)
-  "Insert a normal tab character. Useful for manual indentation."
-  (interactive "*P")
+(defun kickasm-insert-tab ()
+  "Insert a normal tab character.  Useful for manual indentation."
+  (interactive)
   (insert ?\t))
 
-(defun kickasm-find-definition (arg)
-  "Move to definition of the function/macro/etc having the name at point. 
-It only works if definition are located in the same buffer. The point
+(defun kickasm-find-definition ()
+  "Move to definition of the function/macro/etc having the name at point.
+It only works if definition are located in the same buffer.  The point
 are saved and you should press \\[kickasm-return-from-definition] to go back.
 Up to 'kickasm-position-stack-depth' positions will be remembered on the stack."
-  (interactive "*P")
+  (interactive)
   (let ((pos (point))
 	(wstop (if (forward-word) (point)))
 	(wstart (if (backward-word) (point))))
@@ -336,10 +339,10 @@ Up to 'kickasm-position-stack-depth' positions will be remembered on the stack."
       (goto-char pos))))
   
 
-(defun kickasm-return-from-definition (arg)
+(defun kickasm-return-from-definition ()
   "Return to the last position where you pressed \\[kickasm-find-definition].
 Up to `kickasm-position-stack-depth' positions will be remembered."
-  (interactive "*P")
+  (interactive)
   (setq kickasm--return-position-stack
 	(nthcdr (1- kickasm-position-stack-depth) kickasm--return-position-stack))
   (let ((pos (marker-position (car kickasm--return-position-stack))))
@@ -538,7 +541,10 @@ Up to `kickasm-position-stack-depth' positions will be remembered."
     "Short description text for the register in C64"))
 
 (defun kickasm-get-tooltip-string (window object pos)
-  "Return a string to show as a tooltip."
+  "Return a string to show as a tooltip.
+WINDOW is the window where the mouse click happend.
+OBJECT is the buffer in that window.
+POS is the position in the buffer."
   (cond ((not kickasm-show-c64-tooltips) nil)
 	((bufferp object)
 	 (let ((oldbuf (current-buffer)))
@@ -625,7 +631,9 @@ Up to `kickasm-position-stack-depth' positions will be remembered."
   "Regexp that matches labels.")
 
 (defmacro kickasm--opt (keywords &optional paren)
-  "Make optimized regexp of KEYWORDS."
+  "Make optimized regexp of KEYWORDS.
+PAREN determine how the expression is enclosed by parenthesis, see
+`regexp-opt' for more details."
   `(eval-when-compile
      (regexp-opt ,keywords ,paren)))
 
@@ -696,13 +704,14 @@ Up to `kickasm-position-stack-depth' positions will be remembered."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun kickasm--get-mnemonic-indentation (newindcol)
-  "Return the column to use for indenting a mnemonic."
+(defun kickasm--get-mnemonic-indentation (ind)
+  "Return the column to use for indenting a mnemonic.
+IND is the indentation column to use for aligning it with code."
   (if (or (not kickasm-mnemonic-indentation-mode)
 	  (and (equal kickasm-mnemonic-indentation-mode 'min)
-	       (< newindcol kickasm-mnemonic-indent)))
+	       (< ind kickasm-mnemonic-indent)))
       kickasm-mnemonic-indent
-    newindcol))
+    ind))
 
 (defun kickasm--get-else-indentation ()
   "Get indentation column for an else clause.
@@ -717,7 +726,7 @@ assume that the else should stay unchanged."
     (error (current-indentation))))
 
 (defun kickasm--get-command-indentation ()
-  "Get indentation column"
+  "Get indentation column."
   (save-excursion
     (ignore-errors
       (back-to-indentation)
@@ -757,7 +766,7 @@ assume that the else should stay unchanged."
 	      (+ (current-column) (if (or cparen) 0 4)))))))))
 
 (defun kickasm--get-line-type ()
-  "Examines the beginning of a line to verify the line type"
+  "Examines the beginning of a line to verify the line type."
   (save-excursion
     (back-to-indentation)
     (cond ((looking-at kickasm--label-regexp)
@@ -868,7 +877,8 @@ IND is the indentation column to use for aligning it with code."
 	kickasm-mnemonic-comment-indent))))
 
 (defun kickasm--get-newline-indentation (ind)
-  "Return the column where new code probably should be indented to."
+  "Return the column where new code probably should be indented to.
+IND is the indentation column to use for aligning it with code."
   (save-excursion
     (forward-comment (- (point-max)))
     (let ((pretype (kickasm--get-line-type)))
@@ -903,7 +913,10 @@ IND is the indentation column to use for aligning it with code."
 	  (t (current-indentation)))))
 
 (defun kickasm--move-to-next-column (col ind &optional force)
-  "Move point to the next tab stop for a mnemonic/label line."
+  "Move point to the next tab stop for a mnemonic/label line.
+COL is the column that point was located in.
+IND is the indentation column to use for aligning it with code.
+If FORCE is true then tabs and spaces will be inserted if needed."
   (let ((tablist (sort `(0 ,ind
 			   ,(kickasm--get-comment-indentation)
 			   ,(kickasm-column-at-pos (line-end-position))) '<)))
