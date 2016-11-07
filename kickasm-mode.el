@@ -1,4 +1,4 @@
-;;; kickasm.el --- major mode for editing Kick Assembler code
+;;; kickasm-mode.el --- major mode for editing Kick Assembler code
 
 ;; Copyright (C) 2016 Mattias Weidhagen.
 
@@ -610,7 +610,7 @@ POS is the position in the buffer."
     '("abs" "acos" "asin" "atan" "atan2" "cbrt" "ceil" "cos" "cosh" "exp" "expm1"
       "floor" "hypot" "IEEEremainder" "log" "log10" "log1p" "max" "min" "mod" "pow"
       "random" "round" "signum" "sin" "sinh" "sqrt" "tan" "tanh" "toDegrees" "toRadians"
-      "BasicUpstart" "BasicUpstart2" "LoadBinary" "Hashtable" "List" "Matrix" "createFile" 
+      "BasicUpstart" "BasicUpstart2" "LoadBinary" "Hashtable" "List" "Matrix" "createFile"
       "LoadSid" "Vector" "RotationMatrix" "ScaleMatrix" "MoveMatrix" "PerspectiveMatrix"
       "CmdArgument" "toIntString" "toBinaryString" "toOctalString" "toHexString"
       "LoadPicture")
@@ -662,13 +662,13 @@ PAREN determine how the expression is enclosed by parenthesis, see
 	      "[[:space:]]+\\(@?[a-zA-Z0-9_]+\\)\\b")
      (1 'kickasm-keyword-face) (2 'kickasm-name-face))
     ("\\<\\(\\.pseudocommand\\)[[:space:]]+\\(@?[a-zA-Z0-9_]+\\)\\(.*{\\)"
-     (1 'kickasm-keyword-face) (2 'kickasm-name-face) (3 'normal t))    
+     (1 'kickasm-keyword-face) (2 'kickasm-name-face) (3 'normal t))
     (,(kickasm--opt kickasm-keywords 'words) . 'kickasm-keyword-face)
 
     ;; Special keywords
     (,(concat "\\<" (kickasm--opt '(".namespace" ".filenamespace") t)
 	      "[[:space:]]+\\([a-zA-Z0-9_]+\\)\\b")
-     (1 'kickasm-special-keyword-face) (2 'kickasm-name-face))    
+     (1 'kickasm-special-keyword-face) (2 'kickasm-name-face))
     (,(kickasm--opt kickasm-special-keywords 'words) . 'kickasm-special-keyword-face)
     ("[^;\n]*\\(\\*[[:space:]]*=\\)" (1 'kickasm-special-keyword-face))
     (,(concat "\\<" (kickasm--opt '(".import" ".importonce") t)
@@ -836,7 +836,7 @@ IND is the indentation column to use for aligning it with code."
 		     (not (= ind kickasm-mnemonic-indent))
 		     (or (not kickasm-mnemonic-indentation-mode)
 			 (and (equal kickasm-mnemonic-indentation-mode 'min)
-			      (< ind kickasm-mnemonic-indent))))	
+			      (< ind kickasm-mnemonic-indent))))
 	    (setq poslist (cons kickasm-mnemonic-indent poslist))))
 
 	(setq poslist (sort poslist '<))
@@ -849,7 +849,7 @@ IND is the indentation column to use for aligning it with code."
 		       (or (not (= curcol col))
 			   (= (length poslist) 1)))
 	    (if hitlist
-		(progn 
+		(progn
 		  ;; Make poslist circular to make it easier to cycle through
 		  (setcdr (last poslist) poslist)
 		  (setq comcol (cadr hitlist)))
@@ -1011,7 +1011,7 @@ If FORCE is true then tabs and spaces will be inserted if needed."
 	    (t
 	     ;; If code is located at kickasm-mnemonic-indent (and style is not 'depth)
 	     ;; Then indentation should change if point is located at the beginning of
-	     ;; the code, i.e make it toggle between newindcol and mnem. 
+	     ;; the code, i.e make it toggle between newindcol and mnem.
 	     (let ((mnemind (kickasm--get-mnemonic-indentation newindcol)))
 	       (cond ((= mnemind newindcol)
 		      (indent-line-to newindcol))
