@@ -52,12 +52,21 @@
 ;; the right.
 ;; If setting it to 'depth then all mnemonics will be indented just
 ;; like any other command (like .if/.for/.while etc).
-;; If you prefer any of the two latter styles then you should probably
+;; If you prefer any of the two latter styles then you might want to
 ;; change the value of `kickasm-command-start-indent' to something larger
-;; than the default value of 4.
+;; than the default value.
 ;; It is also possible to turn off all automatic indentation by setting
 ;; variable `kickasm-use-automatic-indentation' to nil. In that case
 ;; pressing TAB will insert a tab character instead.
+
+;; When editing a Kick Assembler file you normally have script code
+;; mixed with assembler code. To make editing easy then the TAB key,
+;; apart from indenting a line, also cycles through a list of tab stops
+;; depending on the line type.
+
+;; If you want to have comments starting in column 0, e.g. at the top of
+;; the file, you will have to use /* (c-style comment starter) and
+;; not // (c++-style comment starter).
 
 ;; kickasm mode is not automatically linked to any specific file
 ;; extension. To do that you should put the following lines in your
@@ -71,6 +80,11 @@
 ;;
 ;; Use 'M-x customize-group RET kickasm RET' to adapt kickasm to your
 ;; needs.
+
+;;; Known Issues
+
+;; The flags for starting C64 Debugger doesn't seem to work. Currently
+;; it starts but doesn't load the .prg file as intended.
 
 ;;; Code:
 
@@ -87,7 +101,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defcustom kickasm-mnemonic-indent 16
+(defcustom kickasm-mnemonic-indent 12
   "Column for 6502 mnemonic."
   :type 'integer
   :group 'kickasm)
@@ -97,7 +111,7 @@
   :type 'integer
   :group 'kickasm)
 
-(defcustom kickasm-command-start-indent 4
+(defcustom kickasm-command-start-indent 8
   "Left most column for Kick Assembler commands."
   :type 'integer
   :group 'kickasm)
@@ -122,9 +136,7 @@
 If nil then always indent mnemonics to `kickasm-mnemonic-indent'.
 If 'min then indent to which is greatest of `kickasm-mnemonic-indent' and the depth 
 of the preceding code.
-If 'depth then always indent to the depth of the preceding code. In this
-case you might also want to set `kickasm-command-start-indent' to a higher value to avoid
-getting the code indented too far to the left."
+If 'depth then always indent to the depth of the preceding code."
   :type 'symbol
   :group 'kickasm)
 
@@ -362,7 +374,7 @@ Up to `kickasm-position-stack-depth' positions will be remembered."
     (((class color) (min-colors 16) (background dark)) :foreground "OrangeRed1" :slant italic)
     (((class color) (min-colors 8)) :foreground "red" :slant italic)
     (t :weight bold))
-  "Kickasm mode face used to highlight illegal 6502 mnemonics."
+  "Kickasm mode face used to highlight unintended 6502 mnemonics."
   :group 'kickasm-faces)
 
 (defface kickasm-label-face
@@ -720,7 +732,7 @@ assume that the else should stay unchanged."
 	    (progn (goto-char (match-beginning 0))
 		   (+ (current-indentation) (if (or cparen oparen) 0 4)))
 	  (if (not (nth 1 syntax))
-	      ;; We are at toplevel
+	      ;; We are at toplevel.
 	      kickasm-command-start-indent
 	    (goto-char (1+ (nth 1 syntax)))
 	    (forward-comment (point-max))
@@ -800,18 +812,23 @@ IND is the indentation column to use for aligning it with code."
 	     (mincol (progn (goto-char (match-beginning 0))
 			    (skip-chars-backward " \t")
 			    (current-column)))
-	     (poslist `(,(max (1+ mincol) kickasm-mnemonic-comment-indent))))
+	     (blockstart (looking-at "\\s-*/\\*+"))
+	     poslist)
 
-	(when (and (>= ind mincol)
-		   (not (= ind (car poslist))))
-	  (setq poslist (cons ind poslist)))
+	(if (and blockstart (= mincol 0))
+	    (setq poslist '(0))
+	  (setq poslist `(,(max (1+ mincol) kickasm-mnemonic-comment-indent)))
+	
+	  (when (and (>= ind mincol)
+		     (not (= ind (car poslist))))
+	    (setq poslist (cons ind poslist)))
 
-	(when (and (>= kickasm-mnemonic-indent mincol)
-		   (not (= ind kickasm-mnemonic-indent))
-		   (or (not kickasm-mnemonic-indentation-mode)
-		       (and (equal kickasm-mnemonic-indentation-mode 'min)
-			    (< ind kickasm-mnemonic-indent))))	
-	  (setq poslist (cons kickasm-mnemonic-indent poslist)))
+	  (when (and (>= kickasm-mnemonic-indent mincol)
+		     (not (= ind kickasm-mnemonic-indent))
+		     (or (not kickasm-mnemonic-indentation-mode)
+			 (and (equal kickasm-mnemonic-indentation-mode 'min)
+			      (< ind kickasm-mnemonic-indent))))	
+	    (setq poslist (cons kickasm-mnemonic-indent poslist))))
 
 	(setq poslist (sort poslist '<))
 	
@@ -981,8 +998,7 @@ IND is the indentation column to use for aligning it with code."
 	    (t
 	     ;; If code is located at kickasm-mnemonic-indent (and style is not 'depth)
 	     ;; Then indentation should change if point is located at the beginning of
-	     ;; the code, i.e make it toggle between newindcol and mnem. Remember to
-	     ;; fix indentation of comment as well. Let point move with move-to-next-column.
+	     ;; the code, i.e make it toggle between newindcol and mnem. 
 	     (let ((mnemind (kickasm--get-mnemonic-indentation newindcol)))
 	       (cond ((= mnemind newindcol)
 		      (indent-line-to newindcol))
