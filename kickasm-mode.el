@@ -6,7 +6,7 @@
 ;; Created: 1 Nov 2016
 ;; URL: https: //github.com/mweidhagen/kickasm-mode
 ;; Keywords: languages
-;; Version: 1.0
+;; Version: 1.0.1
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This file is not part of GNU Emacs.
@@ -80,11 +80,6 @@
 ;;
 ;; Use 'M-x customize-group RET kickasm RET' to adapt kickasm to your
 ;; needs.
-
-;;; Known Issues
-
-;; The flags for starting C64 Debugger doesn't seem to work.  Currently
-;; it starts but doesn't load the .prg file as intended.
 
 ;;; Code:
 
@@ -182,7 +177,7 @@ file was created by the assembler."
   :type 'string
   :group 'kickasm)
 
-(defcustom kickasm-c64debugger-command "C64Debugger"
+(defcustom kickasm-c64debugger-command "C64Debugger -autojmp -wait 4000"
   "Command to run C64 Debugger.
 Please note that -vicesymbols will be added automatically if a vice symbol
 file was created by the assembler."
