@@ -6,7 +6,7 @@
 ;; Created: 1 Nov 2016
 ;; URL: https: //github.com/mweidhagen/kickasm-mode
 ;; Keywords: languages
-;; Version: 1.0.1
+;; Version: 1.0.2
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This file is not part of GNU Emacs.
@@ -28,7 +28,7 @@
 
 ;; This package provides a major mode for editing Mads Nielsen's
 ;; Kick Assembler.  The keywords and syntax are up to date as of
-;; Kick Assembler 4.3
+;; Kick Assembler 4.4
 
 ;; Kick Assembler Home: http://theweb.dk/KickAssembler
 
@@ -542,19 +542,11 @@ OBJECT is the buffer in that window.
 POS is the position in the buffer."
   (cond ((not kickasm-show-c64-tooltips) nil)
 	((bufferp object)
-	 (let ((oldbuf (current-buffer)))
-	   (with-current-buffer (get-buffer-create object)
-	     (let* ((start (cond ((eq (char-after pos) ?$) pos)
-				((eq (char-after (- pos 1)) ?$) (- pos 1))
-				((eq (char-after (- pos 2)) ?$) (- pos 2))
-				((eq (char-after (- pos 3)) ?$) (- pos 3))
-				((eq (char-after (- pos 4)) ?$) (- pos 4))))
-		    (help-string (downcase (buffer-substring-no-properties start (+ start 5))))
-		    (second-char (aref help-string 2))
-		    (tooltip-string (gethash (if (or (eq second-char ?8)
-						     (eq second-char ?9)
-						     (eq second-char ?a)
-						     (eq second-char ?b))
+	 (with-current-buffer object
+	   (save-excursion
+	     (goto-char pos)
+	     (let* ((help-string (downcase (current-word t nil)))
+		    (tooltip-string (gethash (if (string-match-p "[89ab]" help-string 1)
 						 "$d800"
 					       help-string)
 					     kickasm-c64-tooltip-strings)))
@@ -592,7 +584,7 @@ POS is the position in the buffer."
 (eval-and-compile
   (defconst kickasm-special-keywords
     '(".modify" ".filemodify" ".modify" ".align" ".assert" ".asserterror"
-      ".pc" ".pseudopc" ".encoding" ".error" ".plugin")
+      ".pc" ".pseudopc" ".encoding" ".error" ".errorif" ".plugin")
     "Kick Assembler keywords to be extra highlighted"))
 
 (eval-and-compile
@@ -1063,6 +1055,8 @@ If FORCE is true then tabs and spaces will be inserted if needed."
   (modify-syntax-entry ?. "w" kickasm-mode-syntax-table)
   (modify-syntax-entry ?@ "w" kickasm-mode-syntax-table)
   (modify-syntax-entry ?! "w" kickasm-mode-syntax-table)
+  (modify-syntax-entry ?$ "_" kickasm-mode-syntax-table)
+  (modify-syntax-entry ?% "_" kickasm-mode-syntax-table)
   (modify-syntax-entry ?_ "w" kickasm-mode-syntax-table)
   (modify-syntax-entry ?\\ "\\" kickasm-mode-syntax-table)
 
