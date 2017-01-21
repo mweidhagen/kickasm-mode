@@ -6,7 +6,7 @@
 ;; Created: 1 Nov 2016
 ;; URL: https: //github.com/mweidhagen/kickasm-mode
 ;; Keywords: languages
-;; Version: 1.0.2
+;; Version: 1.0.3
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This file is not part of GNU Emacs.
@@ -28,7 +28,7 @@
 
 ;; This package provides a major mode for editing Mads Nielsen's
 ;; Kick Assembler.  The keywords and syntax are up to date as of
-;; Kick Assembler 4.4
+;; Kick Assembler 4.7
 
 ;; Kick Assembler Home: http://theweb.dk/KickAssembler
 
@@ -201,7 +201,7 @@ MODE is the name of the major mode."
 (defun kickasm-assemble ()
   "Assemble the file in the buffer."
   (interactive)
-  (compile (concat kickasm-assemble-command " " (buffer-name))))
+  (compile (concat kickasm-assemble-command " " (file-name-nondirectory buffer-file-name))))
 
 (defconst kickasm--vice-process-buffer-name "*vice*")
 (defconst kickasm--c64debugger-process-buffer-name "*c64debugger*")
@@ -301,6 +301,20 @@ ARG is the number of braces to insert."
     (save-excursion (kickasm-indent-line))
     (if old-blink-paren
 	(funcall old-blink-paren))))
+
+(defun kickasm-electric-colon (arg)
+  "Insert a colon and perform indentation.
+ARG is the number of colon to insert."
+  (interactive "*P")
+  ;; Insert the colon
+  (self-insert-command (prefix-numeric-value arg))
+  (if (eq (kickasm--get-line-type) 'mnemonic)
+      (save-excursion
+	(kickasm-indent-line)
+	;; Lets remove any horizontal space that might have been added
+	(end-of-line)
+	(delete-horizontal-space))
+    (kickasm-indent-line)))
 
 (defun kickasm-insert-tab ()
   "Insert a normal tab character.  Useful for manual indentation."
@@ -546,7 +560,8 @@ POS is the position in the buffer."
 	   (save-excursion
 	     (goto-char pos)
 	     (let* ((help-string (downcase (current-word t nil)))
-		    (tooltip-string (gethash (if (string-match-p "[89ab]" help-string 1)
+		    (tooltip-string (gethash (if (string-match-p "[89ab][[:xdigit:]]\\{2,2\\}"
+								 help-string 2)
 						 "$d800"
 					       help-string)
 					     kickasm-c64-tooltip-strings)))
@@ -563,6 +578,12 @@ POS is the position in the buffer."
       "rol" "ror" "rti" "rts" "sbc" "sec" "sed" "sei" "sta" "stx" "sty" "tax" "tay"
       "tsx" "txa" "txs" "tya")
     "6502 mnemonics"))
+
+(eval-and-compile
+  (defconst kickasm-mnemonic-extensions
+    '(".im" ".imm" ".z" ".zp" ".zx" ".zpx" ".zy" ".zpy" ".izx" ".izpx" ".izy"
+      ".izpy" ".a" ".abs" ".ax" ".absx" ".ay" ".absy" ".i" ".ind" ".r" ".rel")
+    "6502 mnemonic extensions"))
 
 (eval-and-compile
   (defconst kickasm-unintended-mnemonics
@@ -634,6 +655,16 @@ PAREN determine how the expression is enclosed by parenthesis, see
 
 (defvar kickasm-font-lock-keywords
   `(
+    ;; Mnemonics
+    (,(concat "\\<\\(" (kickasm--opt kickasm-mnemonics t) (kickasm--opt kickasm-mnemonic-extensions t)
+	      "?\\)\\>[[:space:]]*\\([^;\n]*\\)")
+     (1 'kickasm-mnemonic-face) (4 'kickasm-mnemonic-slant-face keep))
+    
+    ;; Unintended mnemonics
+    (,(concat "\\<\\(" (kickasm--opt kickasm-unintended-mnemonics t) (kickasm--opt kickasm-mnemonic-extensions t)
+	      "?\\)\\>[[:space:]]*\\([^;\n]*\\)")
+     (1 'kickasm-unintended-mnemonic-face) (4 'kickasm-mnemonic-slant-face keep))
+    
     ;; Labels
     (,(concat "\\b" kickasm--label-regexp) (0 'kickasm-label-face append))
 
@@ -644,6 +675,15 @@ PAREN determine how the expression is enclosed by parenthesis, see
     ;; Data directives
     (,(kickasm--opt kickasm-data-directives 'words) . 'kickasm-data-directive-face)
 
+
+    ;; Preprocessor keywords
+    ;; Change the syntax interpretation of preprocessor lines to comments in order
+    ;; to make indentation work better. Can't use syntax tables for this since # is also
+    ;; used in mnemonics.
+    (,kickasm--preprocessor-regexp
+     (1 '(face 'kickasm-preprocessor-face syntax-table (11 . nil)))
+     (2 'kickasm-preprocessor-face keep))
+    
     ;; Keywords
     (,(concat "\\<" (kickasm--opt '(".function" ".macro") t)
 	      "[[:space:]]+\\(@?[a-zA-Z0-9_]+\\)\\b")
@@ -661,29 +701,13 @@ PAREN determine how the expression is enclosed by parenthesis, see
     (,(concat "\\<" (kickasm--opt '(".import" ".importonce") t)
 	      "[[:space:]]+\\(binary\\|c64\\|source\\|text\\)\\>") . 'kickasm-special-keyword-face)
 
-    ;; Preprocessor keywords
-    ;; Change the syntax interpretation of preprocessor lines to comments in order
-    ;; to make indentation work better. Can't use syntax tables for this since # is also
-    ;; used in mnemonics.
-    (,kickasm--preprocessor-regexp
-     (1 '(face 'kickasm-preprocessor-face syntax-table (11 . nil)))
-     (2 'kickasm-preprocessor-face t))
-    
     ;; Builtin functions and methods
     (,(kickasm--opt kickasm-builtin-keywords 'words) . 'kickasm-builtin-keyword-face)
     (,(concat "\\." (kickasm--opt kickasm-builtin-methods t) "\\>") (1 'kickasm-builtin-keyword-face))
 
     ;; Constants
     ;; Consider words written in capital letters as constants
-    ("\\b[[:upper:]][A-Z0-9_]+\\b" . 'kickasm-constant-face)
-
-    ;; Mnemonics
-    (,(concat (kickasm--opt kickasm-mnemonics 'words) "[[:space:]]*\\([^;\n]*\\)")
-     (1 'kickasm-mnemonic-face) (2 'kickasm-mnemonic-slant-face append))
-    
-    ;; Unintended mnemonics
-    (,(concat (kickasm--opt kickasm-unintended-mnemonics 'words) "[[:space:]]*\\([^;\n]*\\)")
-     (1 'kickasm-unintended-mnemonic-face) (2 'kickasm-mnemonic-slant-face append))
+    ("\\<!?\\([[:upper:]][A-Z0-9_]+\\)\\>" (1 'kickasm-constant-face append))
     
     )
   "Expressions to highlight in kickasm-mode.")
@@ -718,8 +742,8 @@ assume that the else should stay unchanged."
     (ignore-errors
       (back-to-indentation)
       
-      (let ((cparen (equal (char-syntax (char-after)) ?\)))
-	    (oparen (equal (char-syntax (char-after)) ?\())
+      (let ((cparen (and (not (eobp)) (equal (char-syntax (char-after)) ?\))))
+	    (oparen (and (not (eobp)) (equal (char-syntax (char-after)) ?\()))
 	    (syntax (syntax-ppss)))
 	
 	(forward-comment (- (point-max)))
@@ -758,10 +782,11 @@ assume that the else should stay unchanged."
     (back-to-indentation)
     (cond ((looking-at kickasm--label-regexp)
 	   'label)
-	  ((looking-at (kickasm--opt (append kickasm-mnemonics
-					     kickasm-unintended-mnemonics
-					     kickasm-data-directives)
-				     'words))
+	  ((looking-at (concat "\\<\\("
+			       (kickasm--opt (append kickasm-mnemonics kickasm-unintended-mnemonics) t)
+			       (kickasm--opt kickasm-mnemonic-extensions t) 
+			       "?\\)\\>\\|"
+			       (kickasm--opt kickasm-data-directives 'words)))
 	   'mnemonic)
 	  ((= (point) (line-beginning-position) (line-end-position))
 	   'newline)
@@ -876,7 +901,13 @@ IND is the indentation column to use for aligning it with code."
 	     (skip-chars-forward "^:")
 	     (forward-char)
 	     (skip-chars-forward " \t")
-	     (current-column))
+	     (if (= (point) (line-end-position))
+		 ;; We are on a line after a label only line. Lets recurse
+		 ;; backwards until we find a line which is not a label only
+		 ;; line
+		 (progn (beginning-of-line)
+			(if (bobp) ind (kickasm--get-newline-indentation ind)))
+	       (current-column)))
 	    (t ind)))))
 
 (defun kickasm--get-preprocessor-indentation ()
@@ -900,7 +931,7 @@ IND is the indentation column to use for aligning it with code."
 	  (t (current-indentation)))))
 
 (defun kickasm--move-to-next-column (col ind &optional force)
-  "Move point to the next tab stop for a mnemonic/label line.
+  "Move point to the next tab stop.
 COL is the column that point was located in.
 IND is the indentation column to use for aligning it with code.
 If FORCE is true then tabs and spaces will be inserted if needed."
@@ -916,7 +947,6 @@ If FORCE is true then tabs and spaces will be inserted if needed."
       (setq tablist (cdr tablist)))
 
     (move-to-column (if tablist (car tablist) 0) force)))
-		
 
 (defun kickasm-indent-line ()
   "Indent current line for `kickasm-mode'."
@@ -950,6 +980,7 @@ If FORCE is true then tabs and spaces will be inserted if needed."
 		   (labelend (kickasm--get-label-end-pos)))
 	       (goto-char labelend)
 	       (cond ((looking-at "\\s-*\\(//+\\|/\\*+\\)")
+		      ;; There is a comment following the label
 		      (let ((comcol (kickasm-column-at-pos (match-beginning 1))))
 			(kickasm--indent-comment savedcol newindcol)
 			(if (= savedcol comcol)
@@ -962,15 +993,21 @@ If FORCE is true then tabs and spaces will be inserted if needed."
 		      (newline)
 		      (kickasm-indent-line))
 		     (t
-		      (skip-chars-forward " \t")
-		      (unless (or (= (point) (line-end-position))
-				  (= (kickasm-column-at-pos) mnemind))
-			;; Mnemonic is not indented correctly
-			(delete-horizontal-space)
-			(indent-to mnemind))
+		      (let ((only-label (= (point) (line-end-position))))
+			(skip-chars-forward " \t")
+			(unless (or (= (point) (line-end-position))
+				    (= (kickasm-column-at-pos) mnemind))
+			  ;; Mnemonic is not indented correctly
+			  (save-excursion
+			    (delete-horizontal-space)
+			    (indent-to mnemind)))
 
-		      (kickasm--indent-comment savedcol newindcol)
-		      (kickasm--move-to-next-column savedcol newindcol t)))))
+			(kickasm--indent-comment savedcol newindcol)
+			(if (and (not only-label) (= indcol 0))
+			    (kickasm--move-to-next-column savedcol newindcol t)  
+			  ;; Assume that we should move to mnemonic indentation if we
+			  ;; have indented a label (or just added a label)
+			  (move-to-column mnemind t)))))))
 	    ((eq linetype 'comment)
 	     (kickasm--indent-comment savedcol newindcol)
 	     (if (= indcol savedcol)
@@ -980,7 +1017,10 @@ If FORCE is true then tabs and spaces will be inserted if needed."
 	     (let ((mnemind (kickasm--get-mnemonic-indentation newindcol)))
 	       (indent-line-to mnemind)
 	       (kickasm--indent-comment savedcol newindcol)
-	       (kickasm--move-to-next-column savedcol newindcol t)))
+	       (if (= indcol (current-indentation))
+		   (kickasm--move-to-next-column savedcol newindcol t)
+		 ;; Calculate next position from new indentation
+		 (kickasm--move-to-next-column (current-column) newindcol t))))
 	    ((eq linetype 'emptyline)
 	     (kickasm--move-to-next-column savedcol newindcol t))
 	    ((eq linetype 'newline)
@@ -1024,6 +1064,7 @@ If FORCE is true then tabs and spaces will be inserted if needed."
   (setq-local tab-width kickasm-tab-width)
 
   (define-key kickasm-mode-map "}" 'kickasm-electric-brace)
+  (define-key kickasm-mode-map ":" 'kickasm-electric-colon)
   (define-key kickasm-mode-map [backtab] 'kickasm-insert-tab)
   (define-key kickasm-mode-map "\C-c\C-f" 'kickasm-find-definition)
   (define-key kickasm-mode-map "\C-c\C-b" 'kickasm-return-from-definition)
@@ -1078,9 +1119,6 @@ If FORCE is true then tabs and spaces will be inserted if needed."
 		nil
 		nil
 		(font-lock-extra-managed-props . (syntax-table help-echo mouse-face))))
-  
-  (setq-local electric-indent-chars
-	      (cons ?: electric-indent-chars))
   
   (setq-local compilation-buffer-name-function 'kickasm-compilation-buffer-name)
   (add-hook 'compilation-mode-hook 'kickasm-compilation-setup-function)
