@@ -6,7 +6,7 @@
 ;; Created: 1 Nov 2016
 ;; URL: https: //github.com/mweidhagen/kickasm-mode
 ;; Keywords: languages
-;; Version: 1.0.3
+;; Version: 1.0.4
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This file is not part of GNU Emacs.
@@ -197,11 +197,47 @@ MODE is the name of the major mode."
   (setq-local compilation-scroll-output 'first-error)
   (setq-local compilation-auto-jump-to-first-error t))
 
-
 (defun kickasm-assemble ()
   "Assemble the file in the buffer."
   (interactive)
   (compile (concat kickasm-assemble-command " " (file-name-nondirectory buffer-file-name))))
+
+(defun kickasm--display-byte-buffer (compbuf)
+  "Display the bytedump file in a buffer and show it in a window.
+COMPBUF is the compilation buffer."
+  (let ((dumpfilename (concat (file-name-directory buffer-file-name) "ByteDump.txt"))
+	(bytebuffer (get-buffer-create (concat "*" (buffer-name) "<Bytedump>*"))))
+	
+    (with-current-buffer bytebuffer
+      (setq buffer-read-only nil)	    
+      (insert-file-contents dumpfilename nil nil nil t)
+      (kickasm-mode)
+      (buffer-disable-undo)
+      (setq buffer-read-only t))
+
+    (set-window-buffer (get-buffer-window compbuf t) bytebuffer)))
+
+;; Called when compilation process changes state.
+(defun kickasm--bytedump-sentinel (proc msg)
+  "Sentinel for compilation buffers.
+PROC is the process and MSG the event message. Checks if
+assembling finished without errors and then opens the bytedump file."
+  (when (and (eq (process-status proc) 'exit)
+	     (= (process-exit-status proc) 0))
+    (kickasm--display-byte-buffer (process-buffer proc))))
+
+(defun kickasm-assemble-bytedump ()
+  "Assemble the file in the buffer and display bytedump file."
+  (interactive)
+  (let* ((compbuffer (compile (concat kickasm-assemble-command " -bytedump " (file-name-nondirectory buffer-file-name))))
+	 (compproc (get-buffer-process compbuffer)))
+
+    (if (and compproc (process-sentinel compproc))
+	(with-current-buffer compbuffer
+	  (advice-add (process-sentinel compproc)
+		      :before #'kickasm--bytedump-sentinel))
+      (when (= (process-exit-status compproc) 0)
+	(kickasm--display-byte-buffer compbuffer)))))
 
 (defconst kickasm--vice-process-buffer-name "*vice*")
 (defconst kickasm--c64debugger-process-buffer-name "*c64debugger*")
@@ -209,7 +245,7 @@ MODE is the name of the major mode."
 (defun kickasm-get-compilation-buffer-data ()
   "Return a list of information from the compilation buffer.
 Currently the list consists of three elements
-Element 0 is the compilation window
+Element 0 is the compilation window.em
 Element 1 is the name of the prg file created by Kick Assembler
 Element 2 is the name of the vice symbol file created by Kick Assembler
 The list might be extended in the future in case more strings are needed."
@@ -655,14 +691,15 @@ PAREN determine how the expression is enclosed by parenthesis, see
 
 (defvar kickasm-font-lock-keywords
   `(
+
     ;; Mnemonics
     (,(concat "\\<\\(" (kickasm--opt kickasm-mnemonics t) (kickasm--opt kickasm-mnemonic-extensions t)
-	      "?\\)\\>[[:space:]]*\\([^;\n]*\\)")
+    	      "?\\)\\>[[:space:]]*\\([^;\n]*\\)")
      (1 'kickasm-mnemonic-face) (4 'kickasm-mnemonic-slant-face keep))
     
     ;; Unintended mnemonics
     (,(concat "\\<\\(" (kickasm--opt kickasm-unintended-mnemonics t) (kickasm--opt kickasm-mnemonic-extensions t)
-	      "?\\)\\>[[:space:]]*\\([^;\n]*\\)")
+    	      "?\\)\\>[[:space:]]*\\([^;\n]*\\)")
      (1 'kickasm-unintended-mnemonic-face) (4 'kickasm-mnemonic-slant-face keep))
     
     ;; Labels
@@ -675,18 +712,17 @@ PAREN determine how the expression is enclosed by parenthesis, see
     ;; Data directives
     (,(kickasm--opt kickasm-data-directives 'words) . 'kickasm-data-directive-face)
 
-
     ;; Preprocessor keywords
     ;; Change the syntax interpretation of preprocessor lines to comments in order
     ;; to make indentation work better. Can't use syntax tables for this since # is also
     ;; used in mnemonics.
     (,kickasm--preprocessor-regexp
-     (1 '(face 'kickasm-preprocessor-face syntax-table (11 . nil)))
+     (1 '(face kickasm-preprocessor-face syntax-table (11 . nil)))
      (2 'kickasm-preprocessor-face keep))
     
     ;; Keywords
     (,(concat "\\<" (kickasm--opt '(".function" ".macro") t)
-	      "[[:space:]]+\\(@?[a-zA-Z0-9_]+\\)\\b")
+    	      "[[:space:]]+\\(@?[a-zA-Z0-9_]+\\)\\b")
      (1 'kickasm-keyword-face) (2 'kickasm-name-face))
     ("\\<\\(\\.pseudocommand\\)[[:space:]]+\\(@?[a-zA-Z0-9_]+\\)\\(.*{\\)"
      (1 'kickasm-keyword-face) (2 'kickasm-name-face) (3 'normal t))
@@ -1069,6 +1105,7 @@ If FORCE is true then tabs and spaces will be inserted if needed."
   (define-key kickasm-mode-map "\C-c\C-f" 'kickasm-find-definition)
   (define-key kickasm-mode-map "\C-c\C-b" 'kickasm-return-from-definition)
   (define-key kickasm-mode-map "\C-c\C-c" 'kickasm-assemble)
+  (define-key kickasm-mode-map "\C-c\C-s" 'kickasm-assemble-bytedump)
   (define-key kickasm-mode-map "\C-c\C-v" 'kickasm-run-vice)
   (define-key kickasm-mode-map "\C-c\C-d" 'kickasm-run-c64debugger)
   (define-key kickasm-mode-map [menu-bar kickasm] (cons "Kick Assembler" (make-sparse-keymap)))
@@ -1119,6 +1156,9 @@ If FORCE is true then tabs and spaces will be inserted if needed."
 		nil
 		nil
 		(font-lock-extra-managed-props . (syntax-table help-echo mouse-face))))
+
+  ;; Kickassembler reports number of characters for errors and not screen columns
+  (setq-local compilation-error-screen-columns nil)
   
   (setq-local compilation-buffer-name-function 'kickasm-compilation-buffer-name)
   (add-hook 'compilation-mode-hook 'kickasm-compilation-setup-function)
