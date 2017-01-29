@@ -6,7 +6,7 @@
 ;; Created: 1 Nov 2016
 ;; URL: https: //github.com/mweidhagen/kickasm-mode
 ;; Keywords: languages
-;; Version: 1.0.4
+;; Version: 1.0.5
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This file is not part of GNU Emacs.
@@ -224,7 +224,8 @@ PROC is the process and MSG the event message. Checks if
 assembling finished without errors and then opens the bytedump file."
   (when (and (eq (process-status proc) 'exit)
 	     (= (process-exit-status proc) 0))
-    (kickasm--display-byte-buffer (process-buffer proc))))
+    (kickasm--display-byte-buffer (process-buffer proc))
+    (advice-remove (process-sentinel proc) #'kickasm--bytedump-sentinel)))
 
 (defun kickasm-assemble-bytedump ()
   "Assemble the file in the buffer and display bytedump file."
