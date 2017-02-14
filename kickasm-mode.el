@@ -6,7 +6,7 @@
 ;; Created: 1 Nov 2016
 ;; URL: https: //github.com/mweidhagen/kickasm-mode
 ;; Keywords: languages
-;; Version: 1.0.5
+;; Version: 1.0.6
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This file is not part of GNU Emacs.
@@ -28,7 +28,7 @@
 
 ;; This package provides a major mode for editing Mads Nielsen's
 ;; Kick Assembler.  The keywords and syntax are up to date as of
-;; Kick Assembler 4.7
+;; Kick Assembler 4.8
 
 ;; Kick Assembler Home: http://theweb.dk/KickAssembler
 
@@ -258,7 +258,7 @@ The list might be extended in the future in case more strings are needed."
     (with-current-buffer compbuf
       (save-excursion
 	(goto-char (point-min))
-	(if (re-search-forward "Writing file: \\([^\n]*\\)" nil t)
+	(if (re-search-forward "Writing file.*: \\([^\n]*\\)" nil t)
 	    (setq prgname (buffer-substring (match-beginning 1) (match-end 1))))
 	(if (re-search-forward "Writing Vice symbol file: \\([^\n]*\\)" nil t)
 	    (setq vicesymname (buffer-substring (match-beginning 1) (match-end 1))))))
@@ -345,14 +345,11 @@ ARG is the number of colon to insert."
   (interactive "*P")
   ;; Insert the colon
   (self-insert-command (prefix-numeric-value arg))
-  (if (eq (kickasm--get-line-type) 'mnemonic)
-      (save-excursion
-	(kickasm-indent-line)
-	;; Lets remove any horizontal space that might have been added
-	(end-of-line)
-	(delete-horizontal-space))
-    (kickasm-indent-line)))
-
+  (when (eq (kickasm--get-line-type) 'label)
+    (if (= (current-indentation) 0)
+	(kickasm--move-to-next-column (point) (kickasm--get-command-indentation) t)
+      (kickasm-indent-line))))
+	
 (defun kickasm-insert-tab ()
   "Insert a normal tab character.  Useful for manual indentation."
   (interactive)
@@ -424,6 +421,18 @@ Up to `kickasm-position-stack-depth' positions will be remembered."
     (((class color) (min-colors 8)) :foreground "red" :slant italic)
     (t :weight bold))
   "Kickasm mode face used to highlight unintended 6502 mnemonics."
+  :group 'kickasm-faces)
+
+(defface kickasm-default-face
+  '((((class grayscale) (background light)) :foreground "black")
+    (((class grayscale) (background dark))  :foreground "white")
+    (((class color) (min-colors 88) (background light)) :foreground "black")
+    (((class color) (min-colors 88) (background dark))  :foreground "white")
+    (((class color) (min-colors 16) (background light)) :foreground "black")
+    (((class color) (min-colors 16) (background dark)) :foreground "white")
+    (((class color) (min-colors 8)) :foreground "black")
+    (t :weight bold))
+  "Kickasm mode default face."
   :group 'kickasm-faces)
 
 (defface kickasm-label-face
@@ -692,20 +701,25 @@ PAREN determine how the expression is enclosed by parenthesis, see
 
 (defvar kickasm-font-lock-keywords
   `(
-
-    ;; Mnemonics
-    (,(concat "\\<\\(" (kickasm--opt kickasm-mnemonics t) (kickasm--opt kickasm-mnemonic-extensions t)
-    	      "?\\)\\>[[:space:]]*\\([^;\n]*\\)")
-     (1 'kickasm-mnemonic-face) (4 'kickasm-mnemonic-slant-face keep))
-    
     ;; Unintended mnemonics
     (,(concat "\\<\\(" (kickasm--opt kickasm-unintended-mnemonics t) (kickasm--opt kickasm-mnemonic-extensions t)
     	      "?\\)\\>[[:space:]]*\\([^;\n]*\\)")
      (1 'kickasm-unintended-mnemonic-face) (4 'kickasm-mnemonic-slant-face keep))
-    
-    ;; Labels
-    (,(concat "\\b" kickasm--label-regexp) (0 'kickasm-label-face append))
 
+    ("\\<\\(nop\\)\\>[[:space:]]+\\([^;\n[:space:]/][^;\n]*\\)"
+     (1 'kickasm-unintended-mnemonic-face) (2 'kickasm-mnemonic-slant-face keep))
+    
+    ;; Mnemonics
+    (,(concat "\\<\\(" (kickasm--opt kickasm-mnemonics t) (kickasm--opt kickasm-mnemonic-extensions t)
+    	      "?\\)\\>[[:space:]]*\\([^;\n]*\\)")
+     (1 'kickasm-mnemonic-face keep) (4 'kickasm-mnemonic-slant-face keep))
+
+    ;; Labels
+    (,(concat kickasm--label-regexp) (0 'kickasm-label-face append))
+
+    ;; The purpose of this is to override label face for question mark conditional <exp> ? a : b
+    (,(concat "?[[:space:]]*" kickasm--label-regexp) (0 'kickasm-default-face prepend))
+    
     ;; Tooltip for IO addresses
     ("$[dD][0489abABcCdD][[:xdigit:]]\\{2,2\\}\\b"
      (0 '(face nil help-echo kickasm-get-tooltip-string mouse-face highlight)))
@@ -983,7 +997,10 @@ If FORCE is true then tabs and spaces will be inserted if needed."
     (while (and tablist (>= col (car tablist)))
       (setq tablist (cdr tablist)))
 
-    (move-to-column (if tablist (car tablist) 0) force)))
+    (if (or (eq last-command-event ?\t)
+	      (not (= (current-indentation) col)))
+	(move-to-column (if tablist (car tablist) 0) force)
+      (move-to-column col force))))
 
 (defun kickasm-indent-line ()
   "Indent current line for `kickasm-mode'."
@@ -1040,11 +1057,11 @@ If FORCE is true then tabs and spaces will be inserted if needed."
 			    (indent-to mnemind)))
 
 			(kickasm--indent-comment savedcol newindcol)
-			(if (and (not only-label) (= indcol 0))
-			    (kickasm--move-to-next-column savedcol newindcol t)  
+			;;(if (and (not only-label) (= indcol 0))
+			(kickasm--move-to-next-column savedcol newindcol t))))))
 			  ;; Assume that we should move to mnemonic indentation if we
 			  ;; have indented a label (or just added a label)
-			  (move-to-column mnemind t)))))))
+			  ;;(move-to-column mnemind t)))))))
 	    ((eq linetype 'comment)
 	     (kickasm--indent-comment savedcol newindcol)
 	     (if (= indcol savedcol)
