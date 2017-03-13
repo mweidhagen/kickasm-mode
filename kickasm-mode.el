@@ -6,7 +6,7 @@
 ;; Created: 1 Nov 2016
 ;; URL: https: //github.com/mweidhagen/kickasm-mode
 ;; Keywords: languages
-;; Version: 1.0.6
+;; Version: 1.0.7
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This file is not part of GNU Emacs.
@@ -344,11 +344,16 @@ ARG is the number of braces to insert."
 ARG is the number of colon to insert."
   (interactive "*P")
   ;; Insert the colon
-  (self-insert-command (prefix-numeric-value arg))
-  (when (eq (kickasm--get-line-type) 'label)
-    (if (= (current-indentation) 0)
-	(kickasm--move-to-next-column (point) (kickasm--get-command-indentation) t)
+  (let ((type (kickasm--get-line-type)))
+    (self-insert-command (prefix-numeric-value arg))
+    (when (and (eq (kickasm--get-line-type) 'label)
+	       (not (eq type 'label)))
       (kickasm-indent-line))))
+      
+;;  (when (eq (kickasm--get-line-type) 'label)
+;;    (if (= (current-indentation) 0)
+;;	(kickasm--move-to-next-column (current-column) (kickasm--get-command-indentation) t)
+;;      (kickasm-indent-line))))
 	
 (defun kickasm-insert-tab ()
   "Insert a normal tab character.  Useful for manual indentation."
@@ -677,7 +682,7 @@ POS is the position in the buffer."
       "height" "getPixel" "getSinglecolorByte" "getMulticolorByte" "header" "version"
       "location" "init" "play" "songs" "startSong" "name" "author" "copyright" "speed"
       "flags" "startpage" "pagelength" "getData" "print" "printnow" "getType" "getValue"
-      "charAt" "substring" "asNumber" "asBoolean" "getSize" "uget")
+      "charAt" "string" "substring" "asNumber" "asBoolean" "getSize" "uget" "lock")
     "Kick Assembler builtin keywords"))
 
 (defconst kickasm--label-regexp
@@ -998,7 +1003,7 @@ If FORCE is true then tabs and spaces will be inserted if needed."
       (setq tablist (cdr tablist)))
 
     (if (or (eq last-command-event ?\t)
-	      (not (= (current-indentation) col)))
+	    (not (= (current-indentation) col)))
 	(move-to-column (if tablist (car tablist) 0) force)
       (move-to-column col force))))
 
