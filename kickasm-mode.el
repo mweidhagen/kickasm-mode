@@ -6,7 +6,7 @@
 ;; Created: 1 Nov 2016
 ;; URL: https: //github.com/mweidhagen/kickasm-mode
 ;; Keywords: languages
-;; Version: 1.0.7
+;; Version: 1.0.8
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This file is not part of GNU Emacs.
@@ -28,7 +28,7 @@
 
 ;; This package provides a major mode for editing Mads Nielsen's
 ;; Kick Assembler.  The keywords and syntax are up to date as of
-;; Kick Assembler 4.8
+;; Kick Assembler 4.9
 
 ;; Kick Assembler Home: http://theweb.dk/KickAssembler
 
@@ -258,7 +258,7 @@ The list might be extended in the future in case more strings are needed."
     (with-current-buffer compbuf
       (save-excursion
 	(goto-char (point-min))
-	(if (re-search-forward "Writing file.*: \\([^\n]*\\)" nil t)
+	(if (re-search-forward "Writing prg file.*: \\([^\n]*\\)" nil t)
 	    (setq prgname (buffer-substring (match-beginning 1) (match-end 1))))
 	(if (re-search-forward "Writing Vice symbol file: \\([^\n]*\\)" nil t)
 	    (setq vicesymname (buffer-substring (match-beginning 1) (match-end 1))))))
@@ -656,7 +656,7 @@ POS is the position in the buffer."
 (eval-and-compile
   (defconst kickasm-special-keywords
     '(".modify" ".filemodify" ".modify" ".align" ".assert" ".asserterror"
-      ".pc" ".pseudopc" ".encoding" ".error" ".errorif" ".plugin")
+      ".pc" ".pseudopc" ".encoding" ".error" ".errorif" ".plugin" ".memblock" ".zp")
     "Kick Assembler keywords to be extra highlighted"))
 
 (eval-and-compile
@@ -672,7 +672,7 @@ POS is the position in the buffer."
       "BasicUpstart" "BasicUpstart2" "LoadBinary" "Hashtable" "List" "Matrix" "createFile"
       "LoadSid" "Vector" "RotationMatrix" "ScaleMatrix" "MoveMatrix" "PerspectiveMatrix"
       "CmdArgument" "toIntString" "toBinaryString" "toOctalString" "toHexString"
-      "LoadPicture")
+      "LoadPicture" "toUpperCase" "toLowerCase")
     "Kick Assembler builtin keywords"))
 
 (eval-and-compile
@@ -1062,11 +1062,11 @@ If FORCE is true then tabs and spaces will be inserted if needed."
 			    (indent-to mnemind)))
 
 			(kickasm--indent-comment savedcol newindcol)
-			;;(if (and (not only-label) (= indcol 0))
-			(kickasm--move-to-next-column savedcol newindcol t))))))
-			  ;; Assume that we should move to mnemonic indentation if we
-			  ;; have indented a label (or just added a label)
-			  ;;(move-to-column mnemind t)))))))
+			;;(if (and (not only-label) (= indcol 0)) 
+			(kickasm--move-to-next-column
+			 (if (eq last-command-event ?:)
+			     (kickasm-column-at-pos labelend)
+			   savedcol) newindcol t))))))
 	    ((eq linetype 'comment)
 	     (kickasm--indent-comment savedcol newindcol)
 	     (if (= indcol savedcol)
