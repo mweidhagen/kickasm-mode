@@ -3,10 +3,10 @@
 ;; Copyright (C) 2016 Mattias Weidhagen.
 
 ;; Author: Mattias Weidhagen <mattias.weidhagen@gmail.com>
-;; Created: 1 Nov 2016
+;; Created: 29 November 2018
 ;; URL: https: //github.com/mweidhagen/kickasm-mode
 ;; Keywords: languages
-;; Version: 1.0.8
+;; Version: 1.0.11
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This file is not part of GNU Emacs.
@@ -28,7 +28,7 @@
 
 ;; This package provides a major mode for editing Mads Nielsen's
 ;; Kick Assembler.  The keywords and syntax are up to date as of
-;; Kick Assembler 4.9
+;; Kick Assembler 5.1
 
 ;; Kick Assembler Home: http://theweb.dk/KickAssembler
 
@@ -81,6 +81,9 @@
 ;; Use 'M-x customize-group RET kickasm RET' to adapt kickasm to your
 ;; needs.
 
+;; TODO: Fix so that predefined functions need a parenthesis before
+;;       changing color
+
 ;;; Code:
 
 (require 'compile)
@@ -96,17 +99,17 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defcustom kickasm-mnemonic-indent 12
+(defcustom kickasm-mnemonic-indent 16
   "Column for 6502 mnemonic."
   :type 'integer
   :group 'kickasm)
 
-(defcustom kickasm-mnemonic-comment-indent 36
+(defcustom kickasm-mnemonic-comment-indent 40
   "Column for 6502 mnemonic comments."
   :type 'integer
   :group 'kickasm)
 
-(defcustom kickasm-command-start-indent 8
+(defcustom kickasm-command-start-indent 12
   "Left most column for Kick Assembler commands."
   :type 'integer
   :group 'kickasm)
@@ -133,6 +136,11 @@ If 'min then indent to which is greatest of `kickasm-mnemonic-indent'
 and the depth of the preceding code.
 If 'depth then always indent to the depth of the preceding code."
   :type 'symbol
+  :group 'kickasm)
+
+(defcustom kickasm-split-large-label-lines nil
+  "Split lines after label if the label is too large to keep indentation."
+  :type 'boolean
   :group 'kickasm)
 
 (defcustom kickasm-preprocessor-indent 2
@@ -165,7 +173,7 @@ each nesting level."
                          (sexp :tag "Error specification")))
   :group 'kickasm)
 
-(defcustom kickasm-assemble-command "java -jar /usr/lib/kickassembler/KickAss.jar -vicesymbols"
+(defcustom kickasm-assemble-command "java -jar /usr/lib/kickassembler/KickAss.jar -vicesymbols -debugdump"
   "Command to assemble Kick Assembler programs."
   :type 'string
   :group 'kickasm)
@@ -177,9 +185,9 @@ file was created by the assembler."
   :type 'string
   :group 'kickasm)
 
-(defcustom kickasm-c64debugger-command "C64Debugger -autojmp -wait 4000"
+(defcustom kickasm-c64debugger-command "c64debugger -autojmp -wait 4000"
   "Command to run C64 Debugger.
-Please note that -vicesymbols will be added automatically if a vice symbol
+Please note that -symbols will be added automatically if a vice symbol
 file was created by the assembler."
   :type 'string
   :group 'kickasm)
@@ -249,21 +257,25 @@ Currently the list consists of three elements
 Element 0 is the compilation window.em
 Element 1 is the name of the prg file created by Kick Assembler
 Element 2 is the name of the vice symbol file created by Kick Assembler
+Element 3 is the name of the breakpoint file
 The list might be extended in the future in case more strings are needed."
   (let* ((compbuf (get-buffer-create (kickasm-compilation-buffer-name nil)))
 	 (compwin (get-buffer-window compbuf t))
+	 breakname
 	 prgname
 	 vicesymname)
 
     (with-current-buffer compbuf
       (save-excursion
 	(goto-char (point-min))
+	(if (re-search-forward "Wrote file.*: \\([^\n]*\\)" nil t)
+	    (setq breakname (buffer-substring (match-beginning 1) (match-end 1))))
 	(if (re-search-forward "Writing prg file.*: \\([^\n]*\\)" nil t)
 	    (setq prgname (buffer-substring (match-beginning 1) (match-end 1))))
 	(if (re-search-forward "Writing Vice symbol file: \\([^\n]*\\)" nil t)
 	    (setq vicesymname (buffer-substring (match-beginning 1) (match-end 1))))))
 
-    (list compwin prgname vicesymname)))
+    (list compwin prgname vicesymname breakname)))
 
 (defun kickasm-run-vice ()
   "Run VICE with an assembled file."
@@ -314,7 +326,8 @@ The list might be extended in the future in case more strings are needed."
 	       "C64DBG"
 	       kickasm--c64debugger-process-buffer-name
 	       (append (split-string-and-unquote kickasm-c64debugger-command)
-		       (if (nth 2 compdata) `("-vicesymbols" ,(nth 2 compdata)))
+		       (if (nth 2 compdata) `("-symbols" ,(nth 2 compdata)))
+		       (if (nth 3 compdata) `("-breakpoints" ,(nth 3 compdata)))
 		       (if (nth 1 compdata) `("-prg" ,(nth 1 compdata))))))))
 
 (defun kickasm--make-position-stack ()
@@ -349,12 +362,7 @@ ARG is the number of colon to insert."
     (when (and (eq (kickasm--get-line-type) 'label)
 	       (not (eq type 'label)))
       (kickasm-indent-line))))
-      
-;;  (when (eq (kickasm--get-line-type) 'label)
-;;    (if (= (current-indentation) 0)
-;;	(kickasm--move-to-next-column (current-column) (kickasm--get-command-indentation) t)
-;;      (kickasm-indent-line))))
-	
+      	
 (defun kickasm-insert-tab ()
   "Insert a normal tab character.  Useful for manual indentation."
   (interactive)
@@ -655,8 +663,9 @@ POS is the position in the buffer."
 
 (eval-and-compile
   (defconst kickasm-special-keywords
-    '(".modify" ".filemodify" ".modify" ".align" ".assert" ".asserterror"
-      ".pc" ".pseudopc" ".encoding" ".error" ".errorif" ".plugin" ".memblock" ".zp")
+    '(".modify" ".filemodify" ".modify" ".align" ".assert" ".asserterror" ".segment"
+      ".pc" ".pseudopc" ".encoding" ".error" ".errorif" ".plugin" ".memblock" ".zp"
+      ".segmentdef" ".segmentout" ".file" ".disk" ".break" ".watch")
     "Kick Assembler keywords to be extra highlighted"))
 
 (eval-and-compile
@@ -1046,6 +1055,7 @@ If FORCE is true then tabs and spaces will be inserted if needed."
 			    (move-to-column (kickasm--get-comment-indentation))
 			  (kickasm--move-to-next-column savedcol newindcol))))
 		     ((and (>= (kickasm-column-at-pos labelend) mnemind)
+			   kickasm-split-large-label-lines
 			   (not (looking-at "\\s-*$")))
 		      ;; Label is too large, if there is any code after the label then we
 		      ;; should split the line
@@ -1132,6 +1142,9 @@ If FORCE is true then tabs and spaces will be inserted if needed."
   (define-key kickasm-mode-map "\C-c\C-v" 'kickasm-run-vice)
   (define-key kickasm-mode-map "\C-c\C-d" 'kickasm-run-c64debugger)
   (define-key kickasm-mode-map [menu-bar kickasm] (cons "Kick Assembler" (make-sparse-keymap)))
+  (define-key kickasm-mode-map [menu-bar kickasm bytedump]
+    '(menu-item "Assemble Buffer with bytedump" kickasm-assemble-bytedump
+		:help "Assemble the buffer and show resulting code with source"))
   (define-key kickasm-mode-map [menu-bar kickasm assemble]
     '(menu-item "Assemble Buffer" kickasm-assemble
 		:help "Assemble the buffer using Kick Assembler"))
