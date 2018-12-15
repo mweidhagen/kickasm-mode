@@ -3,10 +3,10 @@
 ;; Copyright (C) 2016 Mattias Weidhagen.
 
 ;; Author: Mattias Weidhagen <mattias.weidhagen@gmail.com>
-;; Created: 29 November 2018
+;; Created: 15 December 2018
 ;; URL: https: //github.com/mweidhagen/kickasm-mode
 ;; Keywords: languages
-;; Version: 1.0.11
+;; Version: 1.0.12
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This file is not part of GNU Emacs.
@@ -28,7 +28,7 @@
 
 ;; This package provides a major mode for editing Mads Nielsen's
 ;; Kick Assembler.  The keywords and syntax are up to date as of
-;; Kick Assembler 5.1
+;; Kick Assembler 5.2
 
 ;; Kick Assembler Home: http://theweb.dk/KickAssembler
 
@@ -178,7 +178,7 @@ each nesting level."
   :type 'string
   :group 'kickasm)
 
-(defcustom kickasm-vice-command "x64sc -autostartprgmode 0"
+(defcustom kickasm-vice-command "x64sc"
   "Command to run VICE.
 Please note that -moncommands will be added automatically if a vice symbol
 file was created by the assembler."
@@ -255,14 +255,14 @@ assembling finished without errors and then opens the bytedump file."
   "Return a list of information from the compilation buffer.
 Currently the list consists of three elements
 Element 0 is the compilation window.em
-Element 1 is the name of the prg file created by Kick Assembler
+Element 1 is the name of the prg/d64 file created by Kick Assembler
 Element 2 is the name of the vice symbol file created by Kick Assembler
 Element 3 is the name of the breakpoint file
 The list might be extended in the future in case more strings are needed."
   (let* ((compbuf (get-buffer-create (kickasm-compilation-buffer-name nil)))
 	 (compwin (get-buffer-window compbuf t))
 	 breakname
-	 prgname
+	 runnablename
 	 vicesymname)
 
     (with-current-buffer compbuf
@@ -271,11 +271,13 @@ The list might be extended in the future in case more strings are needed."
 	(if (re-search-forward "Wrote file.*: \\([^\n]*\\)" nil t)
 	    (setq breakname (buffer-substring (match-beginning 1) (match-end 1))))
 	(if (re-search-forward "Writing prg file.*: \\([^\n]*\\)" nil t)
-	    (setq prgname (buffer-substring (match-beginning 1) (match-end 1))))
+	    (setq runnablename (buffer-substring (match-beginning 1) (match-end 1))))
+	(if (re-search-forward "Writing d64 file.*: \\([^\n]*\\)" nil t)
+	    (setq runnablename (buffer-substring (match-beginning 1) (match-end 1))))
 	(if (re-search-forward "Writing Vice symbol file: \\([^\n]*\\)" nil t)
 	    (setq vicesymname (buffer-substring (match-beginning 1) (match-end 1))))))
 
-    (list compwin prgname vicesymname breakname)))
+    (list compwin runnablename vicesymname breakname)))
 
 (defun kickasm-run-vice ()
   "Run VICE with an assembled file."
@@ -295,7 +297,7 @@ The list might be extended in the future in case more strings are needed."
     (if (nth 0 compdata) (set-window-buffer (nth 0 compdata) vicebuf))
 
     (if (or (nth 1 compdata)
-	    (y-or-n-p "Unable to locate name of .prg file, do you want to run VICE anyway? "))
+	    (y-or-n-p "Unable to locate name of .prg/.d64 file, do you want to run VICE anyway? "))
 	(apply 'start-process
 	       "VICE"
 	       kickasm--vice-process-buffer-name
