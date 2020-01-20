@@ -6,7 +6,7 @@
 ;; Created: 15 December 2018
 ;; URL: https: //github.com/mweidhagen/kickasm-mode
 ;; Keywords: languages
-;; Version: 1.0.12
+;; Version: 1.0.13
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This file is not part of GNU Emacs.
@@ -28,7 +28,7 @@
 
 ;; This package provides a major mode for editing Mads Nielsen's
 ;; Kick Assembler.  The keywords and syntax are up to date as of
-;; Kick Assembler 5.2
+;; Kick Assembler 5.11
 
 ;; Kick Assembler Home: http://theweb.dk/KickAssembler
 
@@ -83,6 +83,7 @@
 
 ;; TODO: Fix so that predefined functions need a parenthesis before
 ;;       changing color
+;;       Add faces to keywords: true, false
 
 ;;; Code:
 
@@ -173,7 +174,12 @@ each nesting level."
                          (sexp :tag "Error specification")))
   :group 'kickasm)
 
-(defcustom kickasm-assemble-command "java -jar /usr/lib/kickassembler/KickAss.jar -vicesymbols -debugdump"
+(defcustom kickasm-command "java -cp \"/usr/lib/kickassembler/*\" kickass.KickAssembler"
+  "Command to run Kick Assembler."
+  :type 'string
+  :group 'kickasm)
+
+(defcustom kickasm-assemble-command (concat kickasm-command " -vicesymbols -debugdump")
   "Command to assemble Kick Assembler programs."
   :type 'string
   :group 'kickasm)
@@ -248,13 +254,100 @@ assembling finished without errors and then opens the bytedump file."
       (when (= (process-exit-status compproc) 0)
 	(kickasm--display-byte-buffer compbuffer)))))
 
+(defun kickasm-syntactic-face-function (state)
+  "Function to determine which face to use when fontifying syntactically.
+The function is called with a single parameter (the state as returned by
+`parse-partial-sexp' at the beginning of the region to highlight) and
+should return a face.  This is normally set via `font-lock-defaults'."
+  (if (and (nth 8 state)
+	   (get-text-property (nth 8 state) 'font-lock-face))
+      'kickasm-disabled-face
+    (if (nth 3 state) font-lock-string-face font-lock-comment-face)))
+
+(defun kickasm--get-disabled-code ()
+  "Parse current buffer (asminfo) and return a list of disabled code parts."
+  (goto-char (point-min))
+  (let ((dislist))
+    (while (re-search-forward "^ppDisabledCode;\\([0-9]+\\),\\([0-9]+\\),\\([0-9]+\\),\\([0-9]+\\),0" nil t)
+      (setq dislist (append dislist
+			    `(,(list (string-to-number (buffer-substring (match-beginning 1) (match-end 1)))
+				     (string-to-number (buffer-substring (match-beginning 2) (match-end 2)))
+				     (string-to-number (buffer-substring (match-beginning 3) (match-end 3)))
+				     (string-to-number (buffer-substring (match-beginning 4) (match-end 4))))))))			   
+    dislist))
+
+(defun kickasm--set-disabled-face (range)
+  "Applies a disabled face to a text-range.
+RANGE is the range to apply the face to and is a list of start and end position in lines and characters."
+  (let ((start (save-excursion
+		 (goto-char (point-min))
+		 (forward-line (1- (nth 0 range)))
+		 (forward-char (nth 1 range))
+		 (point)))
+	(end (save-excursion
+		 (goto-char (point-min))
+		 (forward-line (1- (nth 2 range)))
+		 (forward-char (nth 3 range))
+		 (point))))
+    (add-text-properties start end '(font-lock-face kickasm-disabled-face))))
+
+(defun kickasm--parse-asminfo ()
+  "Load asminfo into temp buffer and interpret it."
+  (let* ((asminfofilename (concat (file-name-directory buffer-file-name) "asminfo.txt"))
+	 (bytebuffer (get-buffer-create (concat "*" (buffer-name) "<asminfo>*")))
+	 (disabledcode (with-current-buffer bytebuffer
+			 (insert-file-contents-literally asminfofilename nil nil nil t)
+			 (kickasm--get-disabled-code))))
+    (kill-buffer bytebuffer)
+    (let ((modp (buffer-modified-p)))
+      (remove-text-properties (point-min) (point-max) '(font-lock-face nil))
+      (mapc 'kickasm--set-disabled-face disabledcode)
+      (restore-buffer-modified-p modp))))
+  
+;; Called when asminfo compilation process changes state.
+(defun kickasm--asminfo-sentinel (proc msg)
+  "Sentinel for asminfo.
+PROC is the process and MSG the event message. Checks if
+assembling finished without errors and then processes the result."
+  (when (and (eq (process-status proc) 'exit)
+	     (= (process-exit-status proc) 0))
+    (kickasm--parse-asminfo)
+    (advice-remove (process-sentinel proc) #'kickasm--asminfo-sentinel)))
+
+(defun kickasm-assemble-asminfo ()
+  "Assemble the file in the buffer to get asminfo and then process result.
+The use of this is to gray out parts of the code that is disabled."
+  (interactive)
+  ;; Autosave buffer first
+  (do-auto-save t t)
+  (let* ((filename (if (and buffer-auto-save-file-name
+			    (file-exists-p buffer-auto-save-file-name))
+		       buffer-auto-save-file-name
+		     buffer-file-name))
+	 ;; TODO: Change to using own proc, like vice and debugger
+	 (compproc (apply 'start-process
+			  "KICKASMINFO"
+			  "*Messages*"
+			  (append (split-string-and-unquote kickasm-command)
+				  `("-asminfo")
+				  `("syntax")
+				  `(,(file-name-nondirectory filename))
+				  `("-noeval")))))
+
+    (if (and compproc (process-sentinel compproc))
+	(advice-add (process-sentinel compproc)
+		    :before #'kickasm--asminfo-sentinel)
+      (when (= (process-exit-status compproc) 0)
+	(kickasm--parse-asminfo)
+	t))))
+
 (defconst kickasm--vice-process-buffer-name "*vice*")
 (defconst kickasm--c64debugger-process-buffer-name "*c64debugger*")
 
 (defun kickasm-get-compilation-buffer-data ()
   "Return a list of information from the compilation buffer.
 Currently the list consists of three elements
-Element 0 is the compilation window.em
+Element 0 is the compilation window
 Element 1 is the name of the prg/d64 file created by Kick Assembler
 Element 2 is the name of the vice symbol file created by Kick Assembler
 Element 3 is the name of the breakpoint file
@@ -413,6 +506,18 @@ Up to `kickasm-position-stack-depth' positions will be remembered."
 ;; the 6502 mnemonics (standard and unintended).
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defface kickasm-disabled-face
+  '((((class grayscale) (background light)) :foreground "gainsboro")
+    (((class grayscale) (background dark))  :foreground "gray18")
+    (((class color) (min-colors 88) (background light)) :foreground "gainsboro")
+    (((class color) (min-colors 88) (background dark))  :foreground "DimGray")
+    (((class color) (min-colors 16) (background light)) :foreground "gainsboro")
+    (((class color) (min-colors 16) (background dark)) :foreground "DimGray")
+    (((class color) (min-colors 8)) :foreground "gray")
+    (t :weight bold))
+  "Kickasm mode face used for disabled code."
+  :group 'kickasm-faces)
 
 (defface kickasm-mnemonic-face
   '((((class grayscale) (background light)) :foreground "Gray" :weight bold)
@@ -667,7 +772,7 @@ POS is the position in the buffer."
   (defconst kickasm-special-keywords
     '(".modify" ".filemodify" ".modify" ".align" ".assert" ".asserterror" ".segment"
       ".pc" ".pseudopc" ".encoding" ".error" ".errorif" ".plugin" ".memblock" ".zp"
-      ".segmentdef" ".segmentout" ".file" ".disk" ".break" ".watch")
+      ".segmentdef" ".segmentout" ".file" ".disk" ".break" ".watch" ".cpu")
     "Kick Assembler keywords to be extra highlighted"))
 
 (eval-and-compile
@@ -1141,6 +1246,7 @@ If FORCE is true then tabs and spaces will be inserted if needed."
   (define-key kickasm-mode-map "\C-c\C-b" 'kickasm-return-from-definition)
   (define-key kickasm-mode-map "\C-c\C-c" 'kickasm-assemble)
   (define-key kickasm-mode-map "\C-c\C-s" 'kickasm-assemble-bytedump)
+  (define-key kickasm-mode-map "\C-c\C-a" 'kickasm-assemble-asminfo)
   (define-key kickasm-mode-map "\C-c\C-v" 'kickasm-run-vice)
   (define-key kickasm-mode-map "\C-c\C-d" 'kickasm-run-c64debugger)
   (define-key kickasm-mode-map [menu-bar kickasm] (cons "Kick Assembler" (make-sparse-keymap)))
@@ -1193,7 +1299,10 @@ If FORCE is true then tabs and spaces will be inserted if needed."
 		nil
 		nil
 		nil
-		(font-lock-extra-managed-props . (syntax-table help-echo mouse-face))))
+		(font-lock-extra-managed-props . (syntax-table help-echo mouse-face))
+		;; This function makes sure that comments and strings uses disabled face
+		;; when located in a disabled code region.
+		(font-lock-syntactic-face-function . kickasm-syntactic-face-function)))
 
   ;; Kickassembler reports number of characters for errors and not screen columns
   (setq-local compilation-error-screen-columns nil)
@@ -1213,7 +1322,8 @@ If FORCE is true then tabs and spaces will be inserted if needed."
 	  ("constant" "\\b\\.const[[:space:]]+\\(@?[a-zA-Z0-9_]+\\)\\b" 1)
 	  ("struct" "\\b\\.struct[[:space:]]+\\(@?[a-zA-Z0-9_]+\\)\\b" 1)))
   (imenu-add-menubar-index)
-  (setq-local imenu-sort-function 'imenu--sort-by-name))
+  (setq-local imenu-sort-function 'imenu--sort-by-name)
+  (kickasm-assemble-asminfo))
 
 
 (provide 'kickasm-mode)
