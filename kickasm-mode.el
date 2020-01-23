@@ -6,7 +6,7 @@
 ;; Created: 15 December 2018
 ;; URL: https: //github.com/mweidhagen/kickasm-mode
 ;; Keywords: languages
-;; Version: 1.0.13
+;; Version: 1.0.14
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This file is not part of GNU Emacs.
@@ -318,28 +318,30 @@ assembling finished without errors and then processes the result."
   "Assemble the file in the buffer to get asminfo and then process result.
 The use of this is to gray out parts of the code that is disabled."
   (interactive)
-  ;; Autosave buffer first
-  (do-auto-save t t)
-  (let* ((filename (if (and buffer-auto-save-file-name
-			    (file-exists-p buffer-auto-save-file-name))
-		       buffer-auto-save-file-name
-		     buffer-file-name))
-	 ;; TODO: Change to using own proc, like vice and debugger
-	 (compproc (apply 'start-process
-			  "KICKASMINFO"
-			  "*Messages*"
-			  (append (split-string-and-unquote kickasm-command)
-				  `("-asminfo")
-				  `("syntax")
-				  `(,(file-name-nondirectory filename))
-				  `("-noeval")))))
-
-    (if (and compproc (process-sentinel compproc))
-	(advice-add (process-sentinel compproc)
-		    :before #'kickasm--asminfo-sentinel)
-      (when (= (process-exit-status compproc) 0)
-	(kickasm--parse-asminfo)
-	t))))
+  (when buffer-file-name
+    ;; Autosave buffer first  
+    (do-auto-save t t)
+    (let* ((filename (if (and buffer-auto-save-file-name
+			      (file-exists-p buffer-auto-save-file-name))
+			 buffer-auto-save-file-name
+		       buffer-file-name))
+	   (compproc (apply 'start-process
+			    "KICKASMINFO"
+			    "*Messages*"
+			    (append (split-string-and-unquote kickasm-command)
+				    `("-asminfo")
+				    `("syntax")
+				    `(,(file-name-nondirectory filename))
+				    `("-noeval")))))
+      
+      (if (and compproc (process-sentinel compproc))
+	  (advice-add (process-sentinel compproc)
+		      :before #'kickasm--asminfo-sentinel)
+	(when (= (process-exit-status compproc) 0)
+	  (kickasm--parse-asminfo)
+	  t)))
+    ))
+  
 
 (defconst kickasm--vice-process-buffer-name "*vice*")
 (defconst kickasm--c64debugger-process-buffer-name "*c64debugger*")
@@ -1323,7 +1325,8 @@ If FORCE is true then tabs and spaces will be inserted if needed."
 	  ("struct" "\\b\\.struct[[:space:]]+\\(@?[a-zA-Z0-9_]+\\)\\b" 1)))
   (imenu-add-menubar-index)
   (setq-local imenu-sort-function 'imenu--sort-by-name)
-  (kickasm-assemble-asminfo))
+  (kickasm-assemble-asminfo)
+  )
 
 
 (provide 'kickasm-mode)
