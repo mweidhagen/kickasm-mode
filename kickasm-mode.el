@@ -6,7 +6,7 @@
 ;; Created: 15 December 2018
 ;; URL: https: //github.com/mweidhagen/kickasm-mode
 ;; Keywords: languages
-;; Version: 1.0.14
+;; Version: 1.0.15
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This file is not part of GNU Emacs.
@@ -384,10 +384,10 @@ The list might be extended in the future in case more strings are needed."
     (if viceproc (delete-process viceproc))
 
     (with-current-buffer vicebuf
-      (setq buffer-read-only nil)
       (erase-buffer)
       (buffer-disable-undo)
-      (setq buffer-read-only t))
+      (unless (derived-mode-p 'comint-mode)
+	(comint-mode)))
 
     (if (nth 0 compdata) (set-window-buffer (nth 0 compdata) vicebuf))
 
