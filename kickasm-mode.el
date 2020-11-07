@@ -6,7 +6,7 @@
 ;; Created: 15 December 2018
 ;; URL: https: //github.com/mweidhagen/kickasm-mode
 ;; Keywords: languages
-;; Version: 1.0.15
+;; Version: 1.0.16
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This file is not part of GNU Emacs.
@@ -28,7 +28,7 @@
 
 ;; This package provides a major mode for editing Mads Nielsen's
 ;; Kick Assembler.  The keywords and syntax are up to date as of
-;; Kick Assembler 5.11
+;; Kick Assembler 5.16
 
 ;; Kick Assembler Home: http://theweb.dk/KickAssembler
 
@@ -142,6 +142,21 @@ If 'depth then always indent to the depth of the preceding code."
 (defcustom kickasm-split-large-label-lines nil
   "Split lines after label if the label is too large to keep indentation."
   :type 'boolean
+  :group 'kickasm)
+
+(defcustom kickasm-indent-labels-to-scoping-level nil
+  "Indent labels so they align with the scoping hierarchy."
+  :type 'boolean
+  :group 'kickasm)
+
+(defcustom kickasm-scoping-indent 4
+  "Number of character to indent inside a new scope."
+  :type 'integer
+  :group 'kickasm)
+
+(defcustom kickasm-scoping-label-indent 2
+  "Number of character to indent a label inside a new scope."
+  :type 'integer
   :group 'kickasm)
 
 (defcustom kickasm-preprocessor-indent 2
@@ -910,6 +925,19 @@ assume that the else should stay unchanged."
 	(current-indentation))
     (error (current-indentation))))
 
+(defun kickasm--get-label-indentation ()
+  "Get indentation column for a label."
+  (save-excursion
+    (ignore-errors
+      (if kickasm-indent-labels-to-scoping-level
+	  (let ((syntax (syntax-ppss)))
+	    (if (nth 1 syntax)
+		(progn (goto-char (nth 1 syntax))
+		       (back-to-indentation)
+		       (+ (current-column) kickasm-scoping-label-indent))
+	      0))
+	0))))
+
 (defun kickasm--get-command-indentation ()
   "Get indentation column."
   (save-excursion
@@ -921,39 +949,54 @@ assume that the else should stay unchanged."
 	    (syntax (syntax-ppss)))
 	
 	(forward-comment (- (point-max)))
-	
-	(if (looking-back kickasm--command-regexp)
-	    (progn (goto-char (match-beginning 0))
-		   (+ (current-indentation) (if (or cparen oparen) 0 4)))
-	  (if (not (nth 1 syntax))
-	      ;; We are at toplevel.
-	      kickasm-command-start-indent
-	    (goto-char (1+ (nth 1 syntax)))
-	    (forward-comment (point-max))
-	    (if (= (line-number-at-pos) (line-number-at-pos (nth 1 syntax)))
-		(if cparen
-		    ;; Align with starting parenthesis
-		    (progn (goto-char (nth 1 syntax))
-			   (current-column))
-		  ;; Align with first element inside parenthesis
-		  (current-column))
-	      (goto-char (nth 1 syntax))
-	      (forward-comment (- (point-max)))
-	      (if (looking-back kickasm--command-regexp)
-		  (progn
-		    (goto-char (match-beginning 0))
-		    (if (equal (kickasm--get-line-type) 'label)
-			(progn (goto-char (kickasm--get-label-end-pos))
-			       (skip-chars-forward " \t"))
-		      (back-to-indentation)))
-		(goto-char (nth 1 syntax))
-		(back-to-indentation))
-	      (+ (current-column) (if (or cparen) 0 4)))))))))
 
-(defun kickasm--get-line-type ()
-  "Examines the beginning of a line to verify the line type."
+	(cond ((looking-back kickasm--command-regexp)
+	       (goto-char (match-beginning 0))
+	       (+ (if kickasm-indent-labels-to-scoping-level
+		      (current-indentation)
+		    (current-column))
+		  (if oparen 0 kickasm-scoping-indent)))
+	      ((and kickasm-indent-labels-to-scoping-level
+		    (looking-back kickasm--label-regexp))
+	       (goto-char (match-beginning 0))
+	       (+ (current-indentation)
+		  (if oparen
+		      0
+		    (- kickasm-scoping-indent
+		       kickasm-scoping-label-indent))))
+	      (t
+	       (if (not (nth 1 syntax))
+		   ;; We are at toplevel.
+		   kickasm-command-start-indent
+		 (goto-char (1+ (nth 1 syntax)))
+		 (forward-comment (point-max)) 
+		 (if (= (line-number-at-pos) (line-number-at-pos (nth 1 syntax)))
+		     ;; There is something that is not a comment or whitespace after the
+		     ;; starting parenthesis, like: (a,b ...
+		     (if cparen
+			 ;; Align with starting parenthesis
+			 (progn (goto-char (nth 1 syntax))
+				(current-column))
+		       ;; Align with first element inside parenthesis
+		       (current-column))
+		   (goto-char (nth 1 syntax))
+		   (forward-comment (- (point-max)))
+		   (if (looking-back kickasm--command-regexp)
+		       (progn
+			 (goto-char (match-beginning 0))
+			 (if (and (not kickasm-indent-labels-to-scoping-level)
+				  (equal (kickasm--get-line-type) 'label))
+			     (progn (goto-char (kickasm--get-label-end-pos))
+				    (skip-chars-forward " \t"))
+			   (back-to-indentation)))
+		     (goto-char (nth 1 syntax))
+		     (back-to-indentation))
+		   (+ (current-column) (if cparen 0 kickasm-scoping-indent))))))))))
+
+(defun kickasm--get-type-at-position ()
+  "Examines the text found at current position and returns the type found"
   (save-excursion
-    (back-to-indentation)
+    (skip-chars-forward " \t")
     (cond ((looking-at kickasm--label-regexp)
 	   'label)
 	  ((looking-at (concat "\\<\\("
@@ -974,9 +1017,20 @@ assume that the else should stay unchanged."
 	   'maybe-block-comment)
 	  ((equal (char-syntax (char-after)) ?\))
 	   'close-paren)
+	  ((equal (char-syntax (char-after)) ?\()
+	   'open-paren)
 	  ((looking-at "\\(//+\\|/\\*+\\)")
 	   'comment)
+	  ((looking-at kickasm--command-regexp)
+	   'command)
 	  (t 'something))))
+  
+
+(defun kickasm--get-line-type ()
+  "Examines the beginning of a line to verify the line type."
+  (save-excursion
+    (back-to-indentation)
+    (kickasm--get-type-at-position)))
 
 (defun kickasm-column-at-pos (&optional pos)
   "Return buffer column at position POS.
@@ -1015,11 +1069,11 @@ IND is the indentation column to use for aligning it with code."
 	  (setq poslist `(,(max (1+ mincol) kickasm-mnemonic-comment-indent)))
 	
 	  (when (and (>= ind mincol)
-		     (not (= ind (car poslist))))
+		     (/= ind (car poslist)))
 	    (setq poslist (cons ind poslist)))
 
 	  (when (and (>= kickasm-mnemonic-indent mincol)
-		     (not (= ind kickasm-mnemonic-indent))
+		     (/= ind kickasm-mnemonic-indent)
 		     (or (not kickasm-mnemonic-indentation-mode)
 			 (and (equal kickasm-mnemonic-indentation-mode 'min)
 			      (< ind kickasm-mnemonic-indent))))
@@ -1032,7 +1086,7 @@ IND is the indentation column to use for aligning it with code."
 	(let ((hitlist (memq curcol poslist))
 	      (comcol (car (last poslist))))
 	  (unless (and hitlist
-		       (or (not (= curcol col))
+		       (or (/= curcol col)
 			   (= (length poslist) 1)))
 	    (if hitlist
 		(progn
@@ -1121,7 +1175,7 @@ If FORCE is true then tabs and spaces will be inserted if needed."
       (setq tablist (cdr tablist)))
 
     (if (or (eq last-command-event ?\t)
-	    (not (= (current-indentation) col)))
+	    (/= (current-indentation) col))
 	(move-to-column (if tablist (car tablist) 0) force)
       (move-to-column col force))))
 
@@ -1138,8 +1192,7 @@ If FORCE is true then tabs and spaces will be inserted if needed."
 	  (newindcol (kickasm--get-command-indentation)))
       (cond ((not newindcol))
 	    ((and (nth 4 syntax)
-		  (not (= (line-number-at-pos (nth 8 syntax))
-			  (line-number-at-pos))))
+		  (/= (line-number-at-pos (nth 8 syntax)) (line-number-at-pos)))
 	     ;; Inside multiline comment
 	     (let ((comcol (kickasm-column-at-pos (nth 8 syntax))))
 	       (indent-line-to
@@ -1152,26 +1205,48 @@ If FORCE is true then tabs and spaces will be inserted if needed."
 	     (indent-line-to (kickasm--get-else-indentation))
 	     (back-to-indentation))
 	    ((eq linetype 'label)
-	     (save-excursion (indent-line-to 0))
-	     (let ((mnemind (kickasm--get-mnemonic-indentation newindcol))
-		   (labelend (kickasm--get-label-end-pos)))
+	     (save-excursion (indent-line-to (kickasm--get-label-indentation)))
+	     (let* ((mnemind (kickasm--get-mnemonic-indentation newindcol))
+		    (labelend (kickasm--get-label-end-pos))
+		    (labelcol (kickasm-column-at-pos labelend)))
 	       (goto-char labelend)
-	       (cond ((looking-at "\\s-*\\(//+\\|/\\*+\\)")
-		      ;; There is a comment following the label
-		      (let ((comcol (kickasm-column-at-pos (match-beginning 1))))
+	       (let ((type (kickasm--get-type-at-position))
+		     (comcol (save-excursion (skip-chars-forward " \t") (current-column))))
+		 ;;(comcol (kickasm-column-at-pos (match-beginning 1))))
+		 (cond ((eq type 'comment)
+			;; There is a comment following the label
 			(kickasm--indent-comment savedcol newindcol)
 			(if (= savedcol comcol)
 			    (move-to-column (kickasm--get-comment-indentation))
-			  (kickasm--move-to-next-column savedcol newindcol))))
-		     ((and (>= (kickasm-column-at-pos labelend) mnemind)
-			   kickasm-split-large-label-lines
-			   (not (looking-at "\\s-*$")))
-		      ;; Label is too large, if there is any code after the label then we
-		      ;; should split the line
-		      (newline)
-		      (kickasm-indent-line))
-		     (t
-		      (let ((only-label (= (point) (line-end-position))))
+			  (kickasm--move-to-next-column savedcol newindcol)))
+		       ((and (>= labelcol mnemind)
+			     kickasm-split-large-label-lines
+			     (not (looking-at "\\s-*$")))
+			;; Label is too large, if there is any code after the label then we
+			;; should split the line
+			(newline)
+			(kickasm-indent-line))
+		       ((or (eq type 'command)
+			    (eq type 'open-paren))
+			(let ((labelcolp1 (1+ labelcol)))
+			  ;; There is a command following the label
+			  (if (and (= savedcol comcol)
+				   (or (> newindcol labelcolp1)
+				       (/= comcol labelcolp1)))
+			      ;; Cursor is located at start of a command. We should now toggle
+			      ;; command indentation between newindcol and label-end
+			      (progn 
+				(delete-horizontal-space)
+				(move-to-column (indent-to
+						 (if (= savedcol labelcolp1)
+						     newindcol
+						   labelcolp1))))
+			    (move-to-column (if (and (= savedcol labelcolp1)
+						     (< labelcolp1 newindcol))
+						newindcol
+					      (if (= comcol labelcol) labelcol labelcolp1))
+					    t))))
+		       ((eq type 'mnemonic)
 			(skip-chars-forward " \t")
 			(unless (or (= (point) (line-end-position))
 				    (= (kickasm-column-at-pos) mnemind))
@@ -1179,13 +1254,13 @@ If FORCE is true then tabs and spaces will be inserted if needed."
 			  (save-excursion
 			    (delete-horizontal-space)
 			    (indent-to mnemind)))
-
+			  
 			(kickasm--indent-comment savedcol newindcol)
-			;;(if (and (not only-label) (= indcol 0)) 
 			(kickasm--move-to-next-column
 			 (if (eq last-command-event ?:)
-			     (kickasm-column-at-pos labelend)
+			     labelcol
 			   savedcol) newindcol t))))))
+
 	    ((eq linetype 'comment)
 	     (kickasm--indent-comment savedcol newindcol)
 	     (if (= indcol savedcol)
@@ -1206,7 +1281,8 @@ If FORCE is true then tabs and spaces will be inserted if needed."
 	    ((eq linetype 'preprocessor)
 	     (indent-line-to (kickasm--get-preprocessor-indentation))
 	     (back-to-indentation))
-	    ((eq linetype 'close-paren)
+	    ((or (eq linetype 'close-paren)
+		 (eq linetype 'open-paren))
 	     (indent-line-to newindcol)
 	     (kickasm--indent-comment savedcol newindcol)
 
@@ -1229,7 +1305,7 @@ If FORCE is true then tabs and spaces will be inserted if needed."
 	       (kickasm--indent-comment savedcol newindcol)
 
 	       (if (and (= indcol savedcol)
-			(not (= (current-indentation) indcol)))
+			(/= (current-indentation) indcol))
 		   (back-to-indentation)
 		 (kickasm--move-to-next-column savedcol (current-indentation) t))))))))
 
