@@ -6,7 +6,7 @@
 ;; Created: 15 December 2018
 ;; URL: https: //github.com/mweidhagen/kickasm-mode
 ;; Keywords: languages
-;; Version: 1.0.16
+;; Version: 1.0.17
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This file is not part of GNU Emacs.
@@ -182,7 +182,7 @@ each nesting level."
   "Internal circular list used for saving markers when searching for definitions.")
 
 (defcustom kickasm-error-regexp-alist
-  '(("^Error: \\([^\n]*\\)\nat line \\([0-9]+\\), column \\([0-9]+\\) in \\(.*\\)"
+  '((kickasm "^Error: \\([^\n]*\\)\nat line \\([0-9]+\\), column \\([0-9]+\\) in \\(.*\\)"
      4 2 3 2 1))
   "Value for `compilation-error-regexp-alist' in kickasm."
   :type '(repeat (choice (symbol :tag "Predefined symbol")
@@ -222,7 +222,15 @@ MODE is the name of the major mode."
 
 (defun kickasm-compilation-setup-function ()
   "Compilation setup function."
-  (setq-local compilation-error-regexp-alist kickasm-error-regexp-alist)
+  (if (not (assoc 'kickasm compilation-error-regexp-alist-alist))
+             (mapc
+              (lambda (item)
+                (push (car item) compilation-error-regexp-alist)
+                (push item compilation-error-regexp-alist-alist)
+                )
+              kickasm-error-regexp-alist))
+
+  ;;(setq-local compilation-error-regexp-alist kickasm-error-regexp-alist)
   (setq-local compilation-scroll-output 'first-error)
   (setq-local compilation-auto-jump-to-first-error t))
 
