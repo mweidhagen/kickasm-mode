@@ -6,7 +6,7 @@
 ;; Created: 15 December 2018
 ;; URL: https: //github.com/mweidhagen/kickasm-mode
 ;; Keywords: languages
-;; Version: 1.0.17
+;; Version: 1.0.18
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This file is not part of GNU Emacs.
@@ -28,7 +28,7 @@
 
 ;; This package provides a major mode for editing Mads Nielsen's
 ;; Kick Assembler.  The keywords and syntax are up to date as of
-;; Kick Assembler 5.16
+;; Kick Assembler 5.21
 
 ;; Kick Assembler Home: http://theweb.dk/KickAssembler
 
@@ -215,6 +215,13 @@ file was created by the assembler."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defmacro kickasm--opt (keywords &optional paren)
+  "Make optimized regexp of KEYWORDS.
+PAREN determine how the expression is enclosed by parenthesis, see
+`regexp-opt' for more details."
+  `(eval-when-compile
+     (regexp-opt ,keywords ,paren)))
+
 (defun kickasm-compilation-buffer-name (mode)
   "Function to compute the name of the compilation buffer.
 MODE is the name of the major mode."
@@ -230,7 +237,6 @@ MODE is the name of the major mode."
                 )
               kickasm-error-regexp-alist))
 
-  ;;(setq-local compilation-error-regexp-alist kickasm-error-regexp-alist)
   (setq-local compilation-scroll-output 'first-error)
   (setq-local compilation-auto-jump-to-first-error t))
 
@@ -779,7 +785,8 @@ POS is the position in the buffer."
 (eval-and-compile
   (defconst kickasm-unintended-mnemonics
     '("ahx" "alr" "anc" "anc2" "arr" "axs" "dcp" "isc" "las" "lax" "rla" "rra" "sax"
-      "sbc2" "shx" "shy" "slo" "sre" "tas" "xaa")
+      "sbc2" "shx" "shy" "slo" "sre" "tas" "xaa" "lxa" "dcm" "ins" "isb" "asr" "ane"
+      "sbx" "sha" "shs" "lae" "lds")
     "6502 unintended mnemonics"))
 
 (eval-and-compile
@@ -829,13 +836,6 @@ POS is the position in the buffer."
 (defconst kickasm--label-regexp
   "@?\\([a-zA-Z0-9_]+\\|\\(![a-zA-Z0-9_]*\\)\\):"
   "Regexp that matches labels.")
-
-(defmacro kickasm--opt (keywords &optional paren)
-  "Make optimized regexp of KEYWORDS.
-PAREN determine how the expression is enclosed by parenthesis, see
-`regexp-opt' for more details."
-  `(eval-when-compile
-     (regexp-opt ,keywords ,paren)))
 
 (defconst kickasm--command-regexp
   (concat (kickasm--opt '(".if" ".for" ".while") t) "[[:space:]]*([^)]*)\\|\\belse")
@@ -958,14 +958,14 @@ assume that the else should stay unchanged."
 	
 	(forward-comment (- (point-max)))
 
-	(cond ((looking-back kickasm--command-regexp)
+	(cond ((looking-back kickasm--command-regexp nil)
 	       (goto-char (match-beginning 0))
 	       (+ (if kickasm-indent-labels-to-scoping-level
 		      (current-indentation)
 		    (current-column))
 		  (if oparen 0 kickasm-scoping-indent)))
 	      ((and kickasm-indent-labels-to-scoping-level
-		    (looking-back kickasm--label-regexp))
+		    (looking-back kickasm--label-regexp nil))
 	       (goto-char (match-beginning 0))
 	       (+ (current-indentation)
 		  (if oparen
@@ -989,7 +989,7 @@ assume that the else should stay unchanged."
 		       (current-column))
 		   (goto-char (nth 1 syntax))
 		   (forward-comment (- (point-max)))
-		   (if (looking-back kickasm--command-regexp)
+		   (if (looking-back kickasm--command-regexp nil)
 		       (progn
 			 (goto-char (match-beginning 0))
 			 (if (and (not kickasm-indent-labels-to-scoping-level)
