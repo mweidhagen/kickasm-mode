@@ -6,7 +6,7 @@
 ;; Created: 15 December 2018
 ;; URL: https: //github.com/mweidhagen/kickasm-mode
 ;; Keywords: languages
-;; Version: 1.0.18
+;; Version: 1.0.19
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This file is not part of GNU Emacs.
@@ -28,7 +28,7 @@
 
 ;; This package provides a major mode for editing Mads Nielsen's
 ;; Kick Assembler.  The keywords and syntax are up to date as of
-;; Kick Assembler 5.21
+;; Kick Assembler 5.24
 
 ;; Kick Assembler Home: http://theweb.dk/KickAssembler
 
@@ -989,7 +989,8 @@ assume that the else should stay unchanged."
 		       (current-column))
 		   (goto-char (nth 1 syntax))
 		   (forward-comment (- (point-max)))
-		   (if (looking-back kickasm--command-regexp nil)
+		   (if (or (looking-back kickasm--command-regexp nil)
+			   (looking-back kickasm--label-regexp nil))
 		       (progn
 			 (goto-char (match-beginning 0))
 			 (if (and (not kickasm-indent-labels-to-scoping-level)
@@ -1254,6 +1255,8 @@ If FORCE is true then tabs and spaces will be inserted if needed."
 						newindcol
 					      (if (= comcol labelcol) labelcol labelcolp1))
 					    t))))
+		       ((eq type 'emptyline)
+			(kickasm--move-to-next-column savedcol newindcol t))
 		       ((eq type 'mnemonic)
 			(skip-chars-forward " \t")
 			(unless (or (= (point) (line-end-position))
